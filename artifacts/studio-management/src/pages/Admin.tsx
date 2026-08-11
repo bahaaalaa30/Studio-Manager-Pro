@@ -142,7 +142,11 @@ export default function Admin() {
   const analyticsParams = { from, to };
   const { data: stats, isLoading: statsLoading, dataUpdatedAt } = useGetAnalyticsRange(
     analyticsParams,
-    { query: { refetchInterval: 30000, staleTime: 10000 } }
+    { query: {
+        queryKey: getGetAnalyticsRangeQueryKey(analyticsParams),
+        refetchInterval: 30000,
+        staleTime: 10000,
+      } }
   );
 
   const ordersQueryParams = useMemo(() => ({
@@ -154,7 +158,10 @@ export default function Admin() {
 
   const { data: allOrders = [], isLoading: ordersLoading } = useListOrders(
     ordersQueryParams,
-    { query: { staleTime: 10000 } }
+    {      query: {
+        queryKey: getListOrdersQueryKey(ordersQueryParams),
+        staleTime: 10000,
+      } }
   );
 
   const filteredOrders = useMemo(() =>

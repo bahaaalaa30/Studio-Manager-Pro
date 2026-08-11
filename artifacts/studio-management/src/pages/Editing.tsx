@@ -8,7 +8,11 @@ export default function Editing() {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading } = useListOrders(
     { statuses: "WAITING_EDITING,EDITING" },
-    { query: { refetchInterval: 15000 } }
+    {
+      query: {
+        queryKey: getListOrdersQueryKey(),
+        refetchInterval: 15000,
+      },}
   );
 
   const updateStatus = useUpdateOrderStatus();

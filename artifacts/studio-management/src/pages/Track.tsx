@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useListOrders } from "@workspace/api-client-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, Camera, MonitorPlay, Printer, PackageCheck, CheckCircle2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
+import { useListOrders, useUpdateOrderStatus, getListOrdersQueryKey } from "@workspace/api-client-react";
 
 const STAGES = [
   { id: "CREATED",   label: "Created",        statuses: ["NEW", "WAITING_PHOTOGRAPHY"], icon: CheckCircle2 },
@@ -30,7 +30,11 @@ export default function Track() {
 
   const { data: orders = [], isLoading } = useListOrders(
     { search: searchTerm },
-    { query: { enabled: searched && searchTerm.length > 3 } }
+    {  query: {
+        queryKey: getListOrdersQueryKey(),
+
+        enabled: searched && searchTerm.length > 3,
+      }, }
   );
 
   const handleSearch = (e: React.FormEvent) => {

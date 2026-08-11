@@ -15,7 +15,10 @@ export default function Delivery() {
 
   const { data: orders = [], isLoading } = useListOrders(
     debouncedSearch ? { search: debouncedSearch } : { statuses: "READY_FOR_DELIVERY" },
-    { query: { enabled: true } }
+    {  query: {
+        queryKey: getListOrdersQueryKey(),
+            enabled: true,
+    },}
   );
 
   const updateStatus   = useUpdateOrderStatus();

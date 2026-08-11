@@ -8,7 +8,10 @@ export default function Photography() {
   const queryClient = useQueryClient();
   const { data: orders = [], isLoading } = useListOrders(
     { statuses: "NEW,WAITING_PHOTOGRAPHY,IN_PHOTOGRAPHY" },
-    { query: { refetchInterval: 15000 } }
+    { query: {
+        queryKey: getListOrdersQueryKey(),
+        refetchInterval: 15000,
+      }, }
   );
 
   const updateStatus = useUpdateOrderStatus();
