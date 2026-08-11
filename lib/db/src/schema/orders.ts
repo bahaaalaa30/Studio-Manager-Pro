@@ -9,7 +9,11 @@ export const ordersTable = pgTable("orders", {
   customerMobile: text("customer_mobile").notNull(),
   customerType: text("customer_type").notNull().default("walk-in"),
   services: jsonb("services").notNull().$type<Array<{
-    serviceType: "personal_photos_8pack" | "card_photos_20pack" | "urgent_fee";
+    serviceType:
+        | "personal_photos_8pack"
+        | "card_photos_20pack"
+        | "card_photos_1pack"
+        | "urgent_fee";
     quantity: number;
     unitPrice: number;
     totalPrice: number;

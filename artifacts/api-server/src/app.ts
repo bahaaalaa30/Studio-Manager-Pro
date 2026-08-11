@@ -6,18 +6,19 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// @ts-ignore
 app.use(
   pinoHttp({
     logger,
     serializers: {
-      req(req) {
+      req(req: { id: any; method: any; url: string; }) {
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
         };
       },
-      res(res) {
+      res(res: { statusCode: number }) {
         return {
           statusCode: res.statusCode,
         };
