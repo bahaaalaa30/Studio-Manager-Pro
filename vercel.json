@@ -1,7 +1,9 @@
 {
+  "buildCommand": "pnpm --filter @workspace/studio-management build",
+  "outputDirectory": "artifacts/studio-management/dist/public",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
