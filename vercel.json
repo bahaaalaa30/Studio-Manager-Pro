@@ -1,6 +1,6 @@
 {
   "buildCommand": "pnpm run build",
-  "outputDirectory": "artifacts/studio-management/dist/public",
+  "outputDirectory": "artifacts/studio-management/dist",
   "rewrites": [
     {
       "source": "/(.*)",
