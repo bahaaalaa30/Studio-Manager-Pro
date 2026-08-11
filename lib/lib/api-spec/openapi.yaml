@@ -1,0 +1,609 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Studio Management System API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: orders
+    description: Order management
+  - name: analytics
+    description: Analytics and reporting
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List orders
+      description: List orders filtered by status, date range, or search query
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+        - name: statuses
+          in: query
+          required: false
+          description: Comma-separated list of statuses to filter by
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: false
+          description: Filter by single date (YYYY-MM-DD). Defaults to today if no date/from/to provided.
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Start date for range filter (YYYY-MM-DD). Use with 'to'.
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          description: End date for range filter (YYYY-MM-DD). Use with 'from'.
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          description: Search by order number, customer name, or mobile
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Create a new order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get order by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateOrder
+      tags: [orders]
+      summary: Update an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderUpdate"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{id}/status:
+    patch:
+      operationId: updateOrderStatus
+      tags: [orders]
+      summary: Update order status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderStatusInput"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{id}/payment:
+    patch:
+      operationId: collectPayment
+      tags: [orders]
+      summary: Collect additional payment for an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentInput"
+      responses:
+        "200":
+          description: Updated order with payment applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analytics/today:
+    get:
+      operationId: getTodayAnalytics
+      tags: [analytics]
+      summary: Get today's analytics dashboard data
+      responses:
+        "200":
+          description: Today's analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /analytics/range:
+    get:
+      operationId: getAnalyticsRange
+      tags: [analytics]
+      summary: Get analytics for a date range
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Start date (YYYY-MM-DD). Defaults to today.
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          description: End date (YYYY-MM-DD). Defaults to today.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Range analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RangeAnalytics"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    OrderStatus:
+      type: string
+      enum:
+        - NEW
+        - WAITING_PHOTOGRAPHY
+        - IN_PHOTOGRAPHY
+        - WAITING_EDITING
+        - EDITING
+        - WAITING_PRINT
+        - PRINTING
+        - READY_FOR_DELIVERY
+        - DELIVERED
+        - CANCELLED
+
+    PaymentMethod:
+      type: string
+      enum:
+        - cash
+        - visa
+        - instapay
+        - vodafone_cash
+
+    OrderService:
+      type: object
+      required: [serviceType, quantity, unitPrice, totalPrice]
+      properties:
+        serviceType:
+          type: string
+          enum:
+            - personal_photos_8pack
+            - card_photos_20pack
+            - card_photos_1pack
+            - urgent_fee
+        quantity:
+          type: integer
+          minimum: 1
+        unitPrice:
+          type: number
+        totalPrice:
+          type: number
+
+    Order:
+      type: object
+      required:
+        - id
+        - orderNumber
+        - customerMobile
+        - customerType
+        - services
+        - totalAmount
+        - paidAmount
+        - remainingAmount
+        - paymentMethod
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+        orderNumber:
+          type: string
+          description: "Auto-generated format: PS-YYYYMMDD-XXXXX"
+        customerName:
+          type: ["string", "null"]
+        customerMobile:
+          type: string
+        customerType:
+          type: string
+          enum: [walk-in]
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderService"
+        totalAmount:
+          type: number
+        paidAmount:
+          type: number
+        remainingAmount:
+          type: number
+        paymentMethod:
+          $ref: "#/components/schemas/PaymentMethod"
+        expectedDeliveryTime:
+          type: ["string", "null"]
+          description: ISO datetime string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    OrderInput:
+      type: object
+      required:
+        - customerMobile
+        - services
+        - paidAmount
+        - paymentMethod
+      properties:
+        customerName:
+          type: string
+        customerMobile:
+          type: string
+          minLength: 1
+        customerType:
+          type: string
+          enum: [walk-in]
+          default: walk-in
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderService"
+          minItems: 1
+        paidAmount:
+          type: number
+          minimum: 0
+        paymentMethod:
+          $ref: "#/components/schemas/PaymentMethod"
+        expectedDeliveryTime:
+          type: string
+          description: ISO datetime string
+        notes:
+          type: string
+
+    OrderUpdate:
+      type: object
+      properties:
+        customerName:
+          type: string
+        customerMobile:
+          type: string
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderService"
+        paidAmount:
+          type: number
+        paymentMethod:
+          $ref: "#/components/schemas/PaymentMethod"
+        expectedDeliveryTime:
+          type: string
+        notes:
+          type: string
+
+    OrderStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+
+    PaymentInput:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          minimum: 0
+        paymentMethod:
+          $ref: "#/components/schemas/PaymentMethod"
+
+    StatusBreakdownItem:
+      type: object
+      required: [status, count]
+      properties:
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        count:
+          type: integer
+
+    PaymentBreakdownItem:
+      type: object
+      required: [paymentMethod, revenue]
+      properties:
+        paymentMethod:
+          $ref: "#/components/schemas/PaymentMethod"
+        revenue:
+          type: number
+
+    DashboardStats:
+      type: object
+      required:
+        - totalOrdersToday
+        - totalRevenueToday
+        - pendingPickups
+        - ordersInProgress
+        - statusBreakdown
+        - paymentBreakdown
+      properties:
+        totalOrdersToday:
+          type: integer
+        totalRevenueToday:
+          type: number
+        pendingPickups:
+          type: integer
+        ordersInProgress:
+          type: integer
+        statusBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusBreakdownItem"
+        paymentBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentBreakdownItem"
+
+    DailyRevenueItem:
+      type: object
+      required: [date, revenue, orders]
+      properties:
+        date:
+          type: string
+        revenue:
+          type: number
+        orders:
+          type: integer
+
+    ServiceBreakdownItem:
+      type: object
+      required: [serviceType, quantity, revenue]
+      properties:
+        serviceType:
+          type: string
+        quantity:
+          type: integer
+        revenue:
+          type: number
+
+    HourlyItem:
+      type: object
+      required: [hour, count]
+      properties:
+        hour:
+          type: integer
+        count:
+          type: integer
+
+    RangePaymentBreakdownItem:
+      type: object
+      required: [paymentMethod, revenue, count]
+      properties:
+        paymentMethod:
+          $ref: "#/components/schemas/PaymentMethod"
+        revenue:
+          type: number
+        count:
+          type: integer
+
+    RangeAnalytics:
+      type: object
+      required:
+        - from
+        - to
+        - totalOrders
+        - totalRevenue
+        - collectedRevenue
+        - outstandingRevenue
+        - avgOrderValue
+        - urgentOrders
+        - deliveredOrders
+        - pendingPickups
+        - ordersInProgress
+        - dailyRevenue
+        - statusBreakdown
+        - paymentBreakdown
+        - serviceBreakdown
+        - hourlyDistribution
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        totalOrders:
+          type: integer
+        totalRevenue:
+          type: number
+        collectedRevenue:
+          type: number
+        outstandingRevenue:
+          type: number
+        avgOrderValue:
+          type: number
+        urgentOrders:
+          type: integer
+        deliveredOrders:
+          type: integer
+        pendingPickups:
+          type: integer
+        ordersInProgress:
+          type: integer
+        dailyRevenue:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyRevenueItem"
+        statusBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusBreakdownItem"
+        paymentBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/RangePaymentBreakdownItem"
+        serviceBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceBreakdownItem"
+        hourlyDistribution:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyItem"

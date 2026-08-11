@@ -1,0 +1,53 @@
+Build a comprehensive "Studio Management System" web application focused entirely on "Workflow 1: Walk-in Customer (Personal & Card Photos)". The system should serve as a functional prototype for photo studios, structured with an interactive dashboard that switches between different employee roles and a customer-facing tracking view. 
+
+Use React (Vite) for the frontend, Tailwind CSS for modern and clean styling (matching the provided UI design with rounded corners and clean cards), and Node.js/Express with a local database (SQLite or PostgreSQL) to persist order records and statuses.
+
+### Global Data Model (Order Structure)
+Each order must have:
+- Order Number: Auto-generated (Format: PS-YYYYMMDD-XXXXX)
+- Customer Details: Name (Optional/Required), Mobile Number, Type (Walk-in)
+- Services Selected: Multi-select items (e.g., Personal Photos 8-pack: 80 EGP, Card Photos 20-pack: 150 EGP, Urgent Fee: +50 EGP).
+- Pricing: Total Amount, Paid Amount, Remaining Amount.
+- Payment Method: Cash, Visa, InstaPay, Vodafone Cash.
+- Expected Delivery Time (Auto-calculated or manually set).
+- Current Status: NEW -> WAITING_PHOTOGRAPHY -> IN_PHOTOGRAPHY -> WAITING_EDITING -> EDITING -> WAITING_PRINT -> PRINTING -> READY_FOR_DELIVERY -> DELIVERED (COMPLETED) / CANCELLED.
+
+### Main Navigation & Role Views
+Provide a sidebar or top navigation to switch between the following views for simulation:
+
+1. 👤 Reception / Intake Dashboard:
+- "New Order" Form: Fields for Name, Mobile, and Client Type.
+- Service Picker: Checkboxes/counters for Personal Photos (multiples of 8) and Card Photos, plus an "Urgent" toggle that automatically updates the pricing summary.
+- Payment Panel: Inputs for Amount Paid, dynamically calculating the "Remaining" balance, and selecting the payment method.
+- Print Preview Ticket: Upon submitting, generate a digital "Order Ticket/Receipt" displaying the Order#, breakdown, QR Code placeholder, and a short URL for tracking.
+
+2. 📸 Photography Station Queue:
+- Displays orders with status `WAITING_PHOTOGRAPHY` or `IN_PHOTOGRAPHY`.
+- Actions: "Start Shoot" (changes status to `IN_PHOTOGRAPHY`) and "Finish Shoot" (updates status to `WAITING_EDITING`).
+
+3. 🎨 Editing & Design Queue:
+- Displays orders with status `WAITING_EDITING` or `EDITING`.
+- Actions: "Start Editing" and "Finish Editing" (updates status to `WAITING_PRINT`).
+
+4. 🖨️ Printing Department Queue:
+- Displays orders with status `WAITING_PRINT` or `PRINTING`.
+- Actions: "Start Printing" and "Finish Printing" (updates status to `READY_FOR_DELIVERY`).
+
+5. 🎁 Delivery / Pickup Desk:
+- Search Bar: Search active orders by Order Number, Mobile Number, or Name.
+- Status Check: Displays order summary. If status is `READY_FOR_DELIVERY`, show the Remaining Balance.
+- Actions: "Collect Payment" input (if balance exists) and a prominent "Deliver & Complete" button (updates status to `DELIVERED`).
+
+6. 📊 Admin Dashboard (Analytics Overview):
+- Metric Cards: Total Orders Today, Total Revenue Today, Pending Pickups, Orders Currently in Progress.
+- Simple Charts: A breakdown of orders by status and a breakdown of revenue by payment method.
+
+7. 📱 Client-Facing Order Tracking Page:
+- A separate view or simulation tab where a client can type their Order Number.
+- Shows a clean visual progress stepper (Created -> Shooting -> Editing -> Printing -> Ready for Pickup -> Delivered) based on the live status in the database.
+
+### UI & Styling Guidelines
+- Modern, clean SaaS layout with a professional color palette (Dark sidebar/header, bright accents like green for ready status, amber for in-progress, blue for queues).
+- High scannability: Use tables and status badges.
+- All numbers, pricing (EGP), and timestamps should update realistically without page reloads (use state polling or clean state management).
+- Support Arabic/English mixed context naturally in the text labels.
