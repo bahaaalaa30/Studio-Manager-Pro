@@ -94,7 +94,7 @@ export declare const ordersTable: import("drizzle-orm/pg-core").PgTableWithColum
             dataType: "json";
             columnType: "PgJsonb";
             data: {
-                serviceType: "personal_photos_8pack" | "card_photos_20pack" | "urgent_fee";
+                serviceType: "personal_photos_8pack" | "card_photos_20pack" | "card_photos_1pack" | "urgent_fee";
                 quantity: number;
                 unitPrice: number;
                 totalPrice: number;
@@ -111,7 +111,7 @@ export declare const ordersTable: import("drizzle-orm/pg-core").PgTableWithColum
             generated: undefined;
         }, {}, {
             $type: {
-                serviceType: "personal_photos_8pack" | "card_photos_20pack" | "urgent_fee";
+                serviceType: "personal_photos_8pack" | "card_photos_20pack" | "card_photos_1pack" | "urgent_fee";
                 quantity: number;
                 unitPrice: number;
                 totalPrice: number;
@@ -279,22 +279,22 @@ export declare const insertOrderSchema: z.ZodObject<{
     customerMobile: z.ZodString;
     customerType: z.ZodOptional<z.ZodString>;
     services: z.ZodType<{
-        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "urgent_fee";
+        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "card_photos_1pack" | "urgent_fee";
         quantity: number;
         unitPrice: number;
         totalPrice: number;
     }[], {
-        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "urgent_fee";
+        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "card_photos_1pack" | "urgent_fee";
         quantity: number;
         unitPrice: number;
         totalPrice: number;
     }[], z.core.$ZodTypeInternals<{
-        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "urgent_fee";
+        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "card_photos_1pack" | "urgent_fee";
         quantity: number;
         unitPrice: number;
         totalPrice: number;
     }[], {
-        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "urgent_fee";
+        serviceType: "personal_photos_8pack" | "card_photos_20pack" | "card_photos_1pack" | "urgent_fee";
         quantity: number;
         unitPrice: number;
         totalPrice: number;
