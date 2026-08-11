@@ -16,8 +16,10 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
-import { getAnalyticsRangeQueryKey, listOrdersQueryKey } from "@workspace/api-client-react";
-
+import {
+  getGetAnalyticsRangeQueryKey,
+  getListOrdersQueryKey,
+} from "@workspace/api-client-react";
 // ── Types / constants ──────────────────────────────────────────────────────
 
 type Preset = "today" | "yesterday" | "7d" | "30d" | "month" | "custom";
