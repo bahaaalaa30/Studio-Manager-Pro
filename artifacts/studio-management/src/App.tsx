@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -16,6 +16,11 @@ import Admin from '@/pages/Admin';
 import Track from '@/pages/Track';
 
 const queryClient = new QueryClient();
+
+type CopiedTooltip = {
+  x: number;
+  y: number;
+};
 
 function Router() {
   return (
@@ -38,7 +43,11 @@ function Router() {
 }
 
 function CopyTrackingLinkHandler() {
+  const [copiedTooltip, setCopiedTooltip] = useState<CopiedTooltip | null>(null);
+
   useEffect(() => {
+    let hideTimer: ReturnType<typeof window.setTimeout> | undefined;
+
     const handleClick = async (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       const button = target?.closest<HTMLButtonElement>('.print-receipt button');
@@ -62,18 +71,36 @@ function CopyTrackingLinkHandler() {
         textArea.remove();
       }
 
-      const previousTitle = button.title;
-      button.title = 'Copied!';
-      window.setTimeout(() => {
-        button.title = previousTitle;
+      const rect = button.getBoundingClientRect();
+      setCopiedTooltip({
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+      });
+
+      if (hideTimer) window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => {
+        setCopiedTooltip(null);
       }, 1500);
     };
 
     document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      if (hideTimer) window.clearTimeout(hideTimer);
+    };
   }, []);
 
-  return null;
+  return copiedTooltip ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg"
+      style={{ left: copiedTooltip.x, top: copiedTooltip.y - 8 }}
+    >
+      Copied!
+      <span className="absolute left-1/2 top-full -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-slate-900" />
+    </div>
+  ) : null;
 }
 
 function App() {
