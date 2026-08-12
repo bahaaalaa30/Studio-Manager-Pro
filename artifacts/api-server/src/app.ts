@@ -90,6 +90,82 @@ app.use(async (_req, res, next) => {
   }
 });
 
+// Keep expectedDeliveryTime populated in API responses, including for older
+// orders where the database column is still NULL. The delivery rules mirror
+// the Reception UI calculation.
+function calculateExpectedDeliveryTime(order: {
+  services?: Array<{ serviceType?: string }>;
+  createdAt?: string | Date;
+  expectedDeliveryTime?: string | Date | null;
+}) {
+  if (order.expectedDeliveryTime) {
+    return order.expectedDeliveryTime instanceof Date
+      ? order.expectedDeliveryTime.toISOString()
+      : order.expectedDeliveryTime;
+  }
+
+  if (!order.createdAt || !Array.isArray(order.services)) {
+    return null;
+  }
+
+  const hasPersonal = order.services.some((s) => s.serviceType === "personal_photos_8pack");
+  const hasCard = order.services.some((s) => s.serviceType === "card_photos_1pack");
+  const isUrgent = order.services.some((s) => s.serviceType === "urgent_fee");
+
+  let days = 0;
+  if (hasPersonal && hasCard) {
+    days = isUrgent ? 1 : 2;
+  } else if (hasPersonal) {
+    days = isUrgent ? 0 : 1;
+  } else if (hasCard) {
+    days = isUrgent ? 1 : 2;
+  }
+
+  const deliveryDate = new Date(order.createdAt);
+  deliveryDate.setDate(deliveryDate.getDate() + days);
+  return deliveryDate.toISOString();
+}
+
+function enrichOrderResponse(body: unknown): unknown {
+  if (Array.isArray(body)) {
+    return body.map((item) => enrichOrderResponse(item));
+  }
+
+  if (
+    body &&
+    typeof body === "object" &&
+    "orderNumber" in body &&
+    "services" in body
+  ) {
+    const order = body as {
+      expectedDeliveryTime?: string | Date | null;
+      services?: Array<{ serviceType?: string }>;
+      createdAt?: string | Date;
+    };
+
+    return {
+      ...(body as Record<string, unknown>),
+      expectedDeliveryTime: calculateExpectedDeliveryTime(order),
+    };
+  }
+
+  return body;
+}
+
+// The order routes return database records directly. Enrich their JSON
+// responses here so search, date-range, and order-detail APIs all expose the
+// calculated delivery timestamp without requiring a data migration.
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api/orders")) {
+    next();
+    return;
+  }
+
+  const originalJson = res.json.bind(res);
+  res.json = ((body: unknown) => originalJson(enrichOrderResponse(body))) as typeof res.json;
+  next();
+});
+
 app.use("/api", router);
 
 export default app;
