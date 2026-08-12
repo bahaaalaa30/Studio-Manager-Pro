@@ -13,6 +13,7 @@ import Editing from '@/pages/Editing';
 import Printing from '@/pages/Printing';
 import Delivery from '@/pages/Delivery';
 import Admin from '@/pages/Admin';
+import Archive from '@/pages/Archive';
 import Track from '@/pages/Track';
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ function Router() {
         <Route path="/printing" component={Printing} />
         <Route path="/delivery" component={Delivery} />
         <Route path="/admin" component={Admin} />
+        <Route path="/archive" component={Archive} />
         <Route path="/track" component={Track} />
         <Route component={NotFound} />
       </Switch>
