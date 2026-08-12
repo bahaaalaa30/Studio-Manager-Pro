@@ -1,13 +1,14 @@
 import { useState } from "react"
 import { Link, useLocation } from "wouter"
-import { 
-  Camera, 
-  MonitorPlay, 
-  Printer, 
-  PackageCheck, 
-  LayoutDashboard, 
-  UserPlus, 
+import {
+  Camera,
+  MonitorPlay,
+  Printer,
+  PackageCheck,
+  LayoutDashboard,
+  UserPlus,
   Search,
+  Archive,
   LogOut,
   Settings,
   Menu,
@@ -16,27 +17,19 @@ import {
 import { cn } from "@/lib/utils"
 
 const navItems = [
-  { icon: UserPlus,       label: "Reception",      href: "/reception" },
+  { icon: UserPlus,       label: "Reception",       href: "/reception" },
   { icon: Camera,         label: "Photography",     href: "/photography" },
   { icon: MonitorPlay,    label: "Editing",         href: "/editing" },
   { icon: Printer,        label: "Printing",        href: "/printing" },
   { icon: PackageCheck,   label: "Delivery",        href: "/delivery" },
   { icon: LayoutDashboard,label: "Admin",           href: "/admin" },
+  { icon: Archive,        label: "Archive",         href: "/archive" },
   { icon: Search,         label: "Customer Track",  href: "/track" },
 ]
 
 export function Sidebar() {
   const [location] = useLocation()
   const [open, setOpen] = useState(false)
-
-  const logoBlock = (
-    <div className="h-16 flex items-center px-6 border-b border-sidebar-border shrink-0">
-      <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center mr-3">
-        <Camera className="w-5 h-5 text-white" />
-      </div>
-      <h1 className="text-lg font-bold text-sidebar-foreground tracking-tight">Studio Hosny</h1>
-    </div>
-  )
 
   const navBlock = (
     <>
@@ -77,7 +70,6 @@ export function Sidebar() {
 
   return (
     <>
-      {/* ── Mobile top header ── */}
       <header className="lg:hidden fixed top-0 inset-x-0 h-16 z-40 bg-sidebar border-b border-sidebar-border flex items-center px-4 gap-3">
         <button
           onClick={() => setOpen(true)}
@@ -92,22 +84,16 @@ export function Sidebar() {
         <span className="text-base font-bold text-sidebar-foreground tracking-tight">Studio Hub</span>
       </header>
 
-      {/* ── Mobile backdrop ── */}
       {open && (
-        <div
-          className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
-        />
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
       )}
 
-      {/* ── Sidebar ── desktop: always visible | mobile: slide-in drawer ── */}
       <aside
         className={cn(
           "w-64 bg-sidebar border-r border-sidebar-border h-[100dvh] flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300 ease-in-out",
           open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        {/* Desktop logo / mobile close button */}
         <div className="h-16 flex items-center px-6 border-b border-sidebar-border shrink-0">
           <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center mr-3">
             <Camera className="w-5 h-5 text-white" />
@@ -121,7 +107,6 @@ export function Sidebar() {
             <X className="w-4 h-4" />
           </button>
         </div>
-
         {navBlock}
       </aside>
     </>
