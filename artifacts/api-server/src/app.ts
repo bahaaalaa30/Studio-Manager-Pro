@@ -5,6 +5,7 @@ const pinoHttp =
   pinoHttpModule as unknown as typeof import("pino-http").default;
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
+import { ensureDatabaseSchema } from "@workspace/db";
 
 const app = express();
 
@@ -30,6 +31,18 @@ app.use(
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Ensure a fresh Vercel Postgres database has the prototype schema before
+// any API route attempts to query it.
+app.use(async (_req, res, next) => {
+  try {
+    await ensureDatabaseSchema();
+    next();
+  } catch (error) {
+    logger.error({ err: error }, "Database schema initialization failed");
+    res.status(500).json({ error: "Database initialization failed" });
+  }
+});
 
 app.use("/api", router);
 
