@@ -47,9 +47,7 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
-    // Vercel project root is the repository root. Put the final SPA bundle
-    // there so the Output Directory is unambiguous for the monorepo.
-    outDir: path.resolve(import.meta.dirname, '..', '..', 'dist'),
+    outDir: path.resolve(import.meta.dirname, 'dist', 'public'),
     emptyOutDir: true,
   },
   server: {
