@@ -36,10 +36,18 @@ app.use(express.urlencoded({ extended: true }));
 // so invalid customer data cannot bypass the UI with Postman/Curl.
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path === "/api/orders") {
-    const name = typeof req.body?.customerName === "string" ? req.body.customerName.trim() : "";
+    const name = typeof req.body?.customerName === "string"
+      ? req.body.customerName.trim().replace(/\s+/g, " ")
+      : "";
     const mobile = typeof req.body?.customerMobile === "string" ? req.body.customerMobile.trim() : "";
     const namePattern = /^[A-Za-z\u0600-\u06FF]+(?:[ '\-][A-Za-z\u0600-\u06FF]+)+$/;
     const mobilePattern = /^01\d{9}$/;
+
+    // Normalize repeated whitespace so input such as "ah  dew" is treated
+    // consistently with the UI as "ah dew" before validation.
+    if (typeof req.body?.customerName === "string") {
+      req.body.customerName = name;
+    }
 
     if (!name) {
       res.status(400).json({ error: "Name is required." });
