@@ -25,7 +25,7 @@ function Router() {
     <Route path="/editing" component={Editing} /><Route path="/printing" component={Printing} />
     <Route path="/delivery" component={Delivery} />
     <Route path="/analytics" component={Admin} />
-    <Route path="/admin"><Redirect to="/analytics" /></Route>
+    <Route path="/admin"><Redirect to="/settings" /></Route>
     <Route path="/settings"><Redirect to="/admin/users" /></Route>
     <Route path="/admin/users"><AdminManagement resource="users" /></Route>
     <Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
