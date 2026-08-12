@@ -1,7 +1,8 @@
 import express from "express";
 import cors from "cors";
 import pinoHttpModule from "pino-http";
-const pinoHttp = pinoHttpModule as unknown as typeof import("pino-http");
+const pinoHttp =
+  pinoHttpModule as unknown as typeof import("pino-http").default;
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 
