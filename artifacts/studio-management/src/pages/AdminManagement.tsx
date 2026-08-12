@@ -27,6 +27,23 @@ function display(value: unknown) { return value === null || value === undefined 
 function inputType(field: string) { return ["price", "quantity", "minimum_quantity", "role_id", "branch_id", "manager_user_id"].includes(field) ? "number" : "text"; }
 function statusClass(value: unknown) { const s = String(value ?? "").toLowerCase(); return s === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : s === "inactive" || s === "disabled" ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"; }
 
+async function readApiResponse(response: Response) {
+  const text = await response.text();
+  if (!text) return null;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try { return JSON.parse(text) as unknown; } catch { return { error: "The server returned invalid JSON." }; }
+  }
+  return { error: text.replace(/<[^>]*>/g, "").trim() || `Request failed with status ${response.status}.` };
+}
+
+function apiError(data: unknown, fallback: string) {
+  if (data && typeof data === "object" && "error" in data && typeof (data as { error?: unknown }).error === "string") {
+    return (data as { error: string }).error;
+  }
+  return fallback;
+}
+
 export default function AdminManagement({ resource }: { resource: Resource }) {
   const config = configs[resource];
   const Icon = config.icon;
@@ -43,11 +60,12 @@ export default function AdminManagement({ resource }: { resource: Resource }) {
   const load = async (query = search) => {
     setLoading(true); setError("");
     try {
-      const response = await fetch(`/api/admin/${resource}${query ? `?search=${encodeURIComponent(query)}` : ""}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to load");
-      setRows(Array.isArray(data) ? data : data.items ?? []); setPage(1);
-    } catch (e) { setError(e instanceof Error ? e.message : "Failed to load"); }
+      const response = await fetch(`/api/admin/${resource}${query ? `?search=${encodeURIComponent(query)}` : ""}`, { headers: { Accept: "application/json" } });
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(apiError(data, `Failed to load ${config.title.toLowerCase()}.`));
+      setRows(Array.isArray(data) ? data as RecordData[] : (data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items) ? (data as { items: RecordData[] }).items : []));
+      setPage(1);
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to load admin data"); }
     finally { setLoading(false); }
   };
   useEffect(() => { void load(""); }, [resource]);
@@ -64,9 +82,9 @@ export default function AdminManagement({ resource }: { resource: Resource }) {
         if (form[field] === undefined || form[field] === "") continue;
         body[field] = inputType(field) === "number" ? Number(form[field]) : form[field];
       }
-      const response = await fetch(editing?.id ? `/api/admin/${resource}/${editing.id}` : `/api/admin/${resource}`, { method: editing?.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error || "Save failed");
+      const response = await fetch(editing?.id ? `/api/admin/${resource}/${editing.id}` : `/api/admin/${resource}`, { method: editing?.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(body) });
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(apiError(data, "Save failed."));
       setEditing(null); await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
     finally { setSaving(false); }
@@ -74,8 +92,9 @@ export default function AdminManagement({ resource }: { resource: Resource }) {
   const remove = async (id: number) => {
     if (!window.confirm("Delete this record? This action cannot be undone.")) return;
     try {
-      const response = await fetch(`/api/admin/${resource}/${id}`, { method: "DELETE" });
-      if (!response.ok) { const data = await response.json(); throw new Error(data.error || "Delete failed"); }
+      const response = await fetch(`/api/admin/${resource}/${id}`, { method: "DELETE", headers: { Accept: "application/json" } });
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(apiError(data, "Delete failed."));
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Delete failed"); }
   };
