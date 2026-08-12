@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -36,10 +37,50 @@ function Router() {
   );
 }
 
+function CopyTrackingLinkHandler() {
+  useEffect(() => {
+    const handleClick = async (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const button = target?.closest<HTMLButtonElement>('.print-receipt button');
+
+      if (!button || !button.querySelector('.lucide-copy')) return;
+
+      const link = button.parentElement?.querySelector('span.font-mono')?.textContent?.trim();
+      if (!link) return;
+
+      try {
+        await navigator.clipboard.writeText(link);
+      } catch {
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+
+      const previousTitle = button.title;
+      button.title = 'Copied!';
+      window.setTimeout(() => {
+        button.title = previousTitle;
+      }, 1500);
+    };
+
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <CopyTrackingLinkHandler />
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <Router />
         </WouterRouter>

@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, Camera, MonitorPlay, Printer, PackageCheck, CheckCircle2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
-import { useListOrders, useUpdateOrderStatus, getListOrdersQueryKey } from "@workspace/api-client-react";
+import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
 
 const STAGES = [
   { id: "CREATED",   label: "Created",        statuses: ["NEW", "WAITING_PHOTOGRAPHY"], icon: CheckCircle2 },
@@ -17,29 +17,33 @@ const STAGES = [
 
 export default function Track() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [searched, setSearched] = useState(false);
+  const [submittedSearch, setSubmittedSearch] = useState("");
 
-  useState(() => {
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const orderParam = params.get("order");
+    const orderParam = params.get("order")?.trim();
     if (orderParam) {
       setSearchTerm(orderParam);
-      setSearched(true);
+      setSubmittedSearch(orderParam);
     }
-  });
+  }, []);
+
+  const searchParams = submittedSearch ? { search: submittedSearch } : undefined;
 
   const { data: orders = [], isLoading } = useListOrders(
-    { search: searchTerm },
-    {  query: {
-        queryKey: getListOrdersQueryKey(),
-
-        enabled: searched && searchTerm.length > 3,
-      }, }
+    searchParams,
+    {
+      query: {
+        queryKey: getListOrdersQueryKey(searchParams),
+        enabled: submittedSearch.length > 3,
+      },
+    }
   );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchTerm.trim()) setSearched(true);
+    const value = searchTerm.trim();
+    setSubmittedSearch(value);
   };
 
   const order = orders[0];
@@ -75,13 +79,13 @@ export default function Track() {
           </Button>
         </form>
 
-        {searched && isLoading && (
+        {submittedSearch && isLoading && (
           <div className="text-center text-muted-foreground animate-pulse text-sm">Looking up order...</div>
         )}
 
-        {searched && !isLoading && !order && searchTerm.length > 3 && (
+        {submittedSearch && !isLoading && !order && submittedSearch.length > 3 && (
           <div className="text-center text-muted-foreground p-6 bg-muted/30 rounded-2xl border border-dashed text-sm">
-            No order found matching "{searchTerm}". Please check the number and try again.
+            No order found matching "{submittedSearch}". Please check the number and try again.
           </div>
         )}
 
