@@ -54,8 +54,25 @@ export default function Reception() {
 
   const hasPhotoService = personalPhotosQty > 0 || cardPhotos1Qty > 0;
 
-  const paidAmount = parseFloat(paidAmountStr) || 0;
-  const remainingAmount = Math.max(0, totalAmount - paidAmount);
+  const paidAmount = paidAmountStr.trim() === "" ? 0 : Number(paidAmountStr);
+  const hasPaidAmount = paidAmountStr.trim() !== "";
+  const isPaidAmountValid =
+    !hasPaidAmount ||
+    (Number.isFinite(paidAmount) && paidAmount >= 0 && paidAmount <= totalAmount);
+
+  const paidAmountError = !hasPaidAmount
+    ? ""
+    : !Number.isFinite(paidAmount)
+      ? "Enter a valid payment amount."
+      : paidAmount < 0
+        ? "Paid amount cannot be negative."
+        : paidAmount > totalAmount
+          ? `Paid amount cannot exceed ${formatCurrency(totalAmount)}.`
+          : "";
+
+  const remainingAmount = isPaidAmountValid
+    ? Math.max(0, totalAmount - paidAmount)
+    : totalAmount;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +80,7 @@ export default function Reception() {
     if (totalAmount === 0) return;
     if (!customerMobile) return;
     if (!customerName) return;
+    if (!isPaidAmountValid) return;
 
     const services: OrderService[] = [];
     if (personalPhotosQty > 0) {
@@ -98,7 +116,7 @@ export default function Reception() {
           customerType: "walk-in",
           services,
           paymentMethod,
-          paidAmount: Math.min(paidAmount, totalAmount),
+          paidAmount,
         },
       },
       {
@@ -400,20 +418,28 @@ export default function Reception() {
               </div>
 
               <div className="space-y-2">
-                <Label>Amount Paid</Label>
+                <Label htmlFor="paidAmount">Amount Paid</Label>
                 <div className="relative">
                   <Input
+                    id="paidAmount"
                     type="number"
                     min="0"
                     max={totalAmount}
                     step="0.01"
                     placeholder="0.00"
-                    className="font-mono pr-12 text-lg h-12"
+                    className={`font-mono pr-12 text-lg h-12 ${paidAmountError ? "border-destructive focus-visible:ring-destructive" : ""}`}
                     value={paidAmountStr}
                     onChange={(e) => setPaidAmountStr(e.target.value)}
+                    aria-invalid={Boolean(paidAmountError)}
+                    aria-describedby={paidAmountError ? "paidAmount-error" : undefined}
                   />
                   <span className="absolute right-4 top-3.5 text-muted-foreground font-mono text-sm">EGP</span>
                 </div>
+                {paidAmountError && (
+                  <p id="paidAmount-error" className="text-sm text-destructive" role="alert">
+                    {paidAmountError}
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-between items-center text-sm font-medium pt-2">
@@ -427,7 +453,7 @@ export default function Reception() {
               type="submit"
               form="order-form"
               className="w-full h-12 text-lg font-bold"
-              disabled={totalAmount === 0 || !customerMobile || !customerName || createOrder.isPending}
+              disabled={totalAmount === 0 || !customerMobile || !customerName || !isPaidAmountValid || createOrder.isPending}
             >
               {createOrder.isPending ? "Creating..." : "Create Order"}
             </Button>
