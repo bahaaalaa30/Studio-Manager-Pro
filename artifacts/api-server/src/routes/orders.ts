@@ -12,6 +12,10 @@ import {
   CollectPaymentParams,
   CollectPaymentBody,
 } from "@workspace/api-zod";
+import {
+  calculateExpectedDeliveryTime,
+  validatePaidAmount,
+} from "../lib/order-calculations.js";
 
 const router: IRouter = Router();
 
@@ -27,12 +31,10 @@ async function generateOrderNumber(): Promise<string> {
   return `${prefix}${seq}`;
 }
 
-// Calculate total from services
 function calcTotal(services: Array<{ serviceType: string; quantity: number; unitPrice: number; totalPrice: number }>): number {
   return services.reduce((sum, s) => sum + s.totalPrice, 0);
 }
 
-// Service pricing map
 const SERVICE_PRICES: Record<string, number> = {
   personal_photos_8pack: 80,
   card_photos_20pack: 150,
@@ -40,20 +42,27 @@ const SERVICE_PRICES: Record<string, number> = {
   urgent_fee: 50,
 };
 
-// Validate a payment against the order total.
-// Negative values are handled by the request schema; this helper also protects
-// every route from accepting a paid amount greater than the order total.
-function validatePaidAmount(paidAmount: number, totalAmount: number): string | null {
-  if (!Number.isFinite(paidAmount)) {
-    return "Paid amount must be a valid number";
-  }
-  if (paidAmount < 0) {
-    return "Paid amount cannot be negative";
-  }
-  if (paidAmount > totalAmount) {
-    return `Paid amount cannot exceed order total of ${totalAmount.toFixed(2)}`;
-  }
-  return null;
+function withExpectedDeliveryTime<T extends {
+  createdAt: Date;
+  expectedDeliveryTime: Date | null;
+  services: unknown;
+}>(order: T): T {
+  if (order.expectedDeliveryTime) return order;
+
+  const services = Array.isArray(order.services)
+    ? order.services.filter(
+        (service): service is { serviceType: string } =>
+          typeof service === "object" &&
+          service !== null &&
+          "serviceType" in service &&
+          typeof (service as { serviceType?: unknown }).serviceType === "string",
+      )
+    : [];
+
+  return {
+    ...order,
+    expectedDeliveryTime: calculateExpectedDeliveryTime(services, order.createdAt),
+  };
 }
 
 // GET /orders
@@ -66,13 +75,11 @@ router.get("/orders", async (req, res): Promise<void> => {
 
   const { status, statuses, date, search } = parsed.data;
   const fromDate = typeof req.query.from === "string" ? req.query.from : undefined;
-  const toDate   = typeof req.query.to   === "string" ? req.query.to   : undefined;
+  const toDate = typeof req.query.to === "string" ? req.query.to : undefined;
 
-  let query = db.select().from(ordersTable);
   const conditions = [];
-
   const hasExplicitRange = !!(fromDate && toDate);
-  const hasExplicitDate  = !!date;
+  const hasExplicitDate = !!date;
   const isStatusOnlyQuery = (status || statuses) && !hasExplicitDate && !hasExplicitRange && !search;
 
   if (!search && !isStatusOnlyQuery) {
@@ -94,11 +101,7 @@ router.get("/orders", async (req, res): Promise<void> => {
     const statusList = statuses.split(",").map((s) => s.trim()).filter(Boolean);
     if (statusList.length > 0) {
       const statusConditions = statusList.map((s) => eq(ordersTable.status, s));
-      conditions.push(
-        statusConditions.length === 1
-          ? statusConditions[0]
-          : or(...statusConditions)!
-      );
+      conditions.push(statusConditions.length === 1 ? statusConditions[0] : or(...statusConditions)!);
     }
   }
 
@@ -107,8 +110,8 @@ router.get("/orders", async (req, res): Promise<void> => {
       or(
         ilike(ordersTable.orderNumber, `%${search}%`),
         ilike(ordersTable.customerMobile, `%${search}%`),
-        ilike(ordersTable.customerName, `%${search}%`)
-      )!
+        ilike(ordersTable.customerName, `%${search}%`),
+      )!,
     );
   }
 
@@ -116,7 +119,7 @@ router.get("/orders", async (req, res): Promise<void> => {
     ? await db.select().from(ordersTable).where(and(...conditions)).orderBy(sql`${ordersTable.createdAt} desc`)
     : await db.select().from(ordersTable).orderBy(sql`${ordersTable.createdAt} desc`);
 
-  res.json(results);
+  res.json(results.map(withExpectedDeliveryTime));
 });
 
 // POST /orders
@@ -128,7 +131,6 @@ router.post("/orders", async (req, res): Promise<void> => {
   }
 
   const data = parsed.data;
-
   const services = data.services.map((s) => ({
     ...s,
     unitPrice: s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0,
@@ -144,8 +146,11 @@ router.post("/orders", async (req, res): Promise<void> => {
   }
 
   const remainingAmount = totalAmount - paidAmount;
-
   const orderNumber = await generateOrderNumber();
+  const createdAt = new Date();
+  const expectedDeliveryTime = data.expectedDeliveryTime
+    ? new Date(data.expectedDeliveryTime)
+    : calculateExpectedDeliveryTime(services, createdAt);
 
   const [order] = await db.insert(ordersTable).values({
     orderNumber,
@@ -157,7 +162,7 @@ router.post("/orders", async (req, res): Promise<void> => {
     paidAmount: String(paidAmount),
     remainingAmount: String(remainingAmount),
     paymentMethod: data.paymentMethod,
-    expectedDeliveryTime: data.expectedDeliveryTime ? new Date(data.expectedDeliveryTime) : null,
+    expectedDeliveryTime,
     status: "WAITING_PHOTOGRAPHY",
     notes: data.notes ?? null,
   }).returning();
@@ -179,7 +184,7 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(order);
+  res.json(withExpectedDeliveryTime(order));
 });
 
 // PATCH /orders/:id
@@ -203,9 +208,7 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   if (data.customerMobile !== undefined) updateData.customerMobile = data.customerMobile;
   if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
   if (data.notes !== undefined) updateData.notes = data.notes;
-  if (data.expectedDeliveryTime !== undefined) {
-    updateData.expectedDeliveryTime = new Date(data.expectedDeliveryTime);
-  }
+  if (data.expectedDeliveryTime !== undefined) updateData.expectedDeliveryTime = new Date(data.expectedDeliveryTime);
 
   if (data.services !== undefined) {
     const services = data.services.map((s) => ({
@@ -257,7 +260,7 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Order not found" });
       return;
     }
-    res.json(existing);
+    res.json(withExpectedDeliveryTime(existing));
     return;
   }
 
@@ -267,7 +270,7 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(order);
+  res.json(withExpectedDeliveryTime(order));
 });
 
 // PATCH /orders/:id/status
@@ -294,7 +297,7 @@ router.patch("/orders/:id/status", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(order);
+  res.json(withExpectedDeliveryTime(order));
 });
 
 // PATCH /orders/:id/payment
@@ -305,8 +308,6 @@ router.patch("/orders/:id/payment", async (req, res): Promise<void> => {
     return;
   }
 
-  // Browser form controls commonly send numeric values as strings (e.g. "80.00").
-  // Normalize the amount before Zod validation so the API accepts both JSON numbers and form-style strings.
   const normalizedBody = {
     ...req.body,
     amount: typeof req.body?.amount === "string" ? Number(req.body.amount) : req.body?.amount,
@@ -337,13 +338,11 @@ router.patch("/orders/:id/payment", async (req, res): Promise<void> => {
     paidAmount: String(newPaid),
     remainingAmount: String(newRemaining),
   };
-  if (parsed.data.paymentMethod) {
-    updateData.paymentMethod = parsed.data.paymentMethod;
-  }
+  if (parsed.data.paymentMethod) updateData.paymentMethod = parsed.data.paymentMethod;
 
   const [order] = await db.update(ordersTable).set(updateData).where(eq(ordersTable.id, params.data.id)).returning();
 
-  res.json(order);
+  res.json(withExpectedDeliveryTime(order));
 });
 
 export default router;
