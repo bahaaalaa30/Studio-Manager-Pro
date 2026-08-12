@@ -40,6 +40,22 @@ const SERVICE_PRICES: Record<string, number> = {
   urgent_fee: 50,
 };
 
+// Validate a payment against the order total.
+// Negative values are handled by the request schema; this helper also protects
+// every route from accepting a paid amount greater than the order total.
+function validatePaidAmount(paidAmount: number, totalAmount: number): string | null {
+  if (!Number.isFinite(paidAmount)) {
+    return "Paid amount must be a valid number";
+  }
+  if (paidAmount < 0) {
+    return "Paid amount cannot be negative";
+  }
+  if (paidAmount > totalAmount) {
+    return `Paid amount cannot exceed order total of ${totalAmount.toFixed(2)}`;
+  }
+  return null;
+}
+
 // GET /orders
 router.get("/orders", async (req, res): Promise<void> => {
   const parsed = ListOrdersQueryParams.safeParse(req.query);
@@ -121,7 +137,13 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   const totalAmount = calcTotal(services);
   const paidAmount = data.paidAmount;
-  const remainingAmount = Math.max(0, totalAmount - paidAmount);
+  const paymentValidationError = validatePaidAmount(paidAmount, totalAmount);
+  if (paymentValidationError) {
+    res.status(400).json({ error: paymentValidationError });
+    return;
+  }
+
+  const remainingAmount = totalAmount - paidAmount;
 
   const orderNumber = await generateOrderNumber();
 
@@ -196,21 +218,36 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
     updateData.totalAmount = String(totalAmount);
 
     if (data.paidAmount !== undefined) {
+      const paymentValidationError = validatePaidAmount(data.paidAmount, totalAmount);
+      if (paymentValidationError) {
+        res.status(400).json({ error: paymentValidationError });
+        return;
+      }
       updateData.paidAmount = String(data.paidAmount);
-      updateData.remainingAmount = String(Math.max(0, totalAmount - data.paidAmount));
+      updateData.remainingAmount = String(totalAmount - data.paidAmount);
     } else {
       const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
       if (existing) {
         const paid = parseFloat(String(existing.paidAmount));
-        updateData.remainingAmount = String(Math.max(0, totalAmount - paid));
+        const paymentValidationError = validatePaidAmount(paid, totalAmount);
+        if (paymentValidationError) {
+          res.status(400).json({ error: paymentValidationError });
+          return;
+        }
+        updateData.remainingAmount = String(totalAmount - paid);
       }
     }
   } else if (data.paidAmount !== undefined) {
     const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
     if (existing) {
       const total = parseFloat(String(existing.totalAmount));
+      const paymentValidationError = validatePaidAmount(data.paidAmount, total);
+      if (paymentValidationError) {
+        res.status(400).json({ error: paymentValidationError });
+        return;
+      }
       updateData.paidAmount = String(data.paidAmount);
-      updateData.remainingAmount = String(Math.max(0, total - data.paidAmount));
+      updateData.remainingAmount = String(total - data.paidAmount);
     }
   }
 
@@ -288,8 +325,13 @@ router.patch("/orders/:id/payment", async (req, res): Promise<void> => {
 
   const currentPaid = parseFloat(String(existing.paidAmount));
   const total = parseFloat(String(existing.totalAmount));
-  const newPaid = Math.min(total, currentPaid + parsed.data.amount);
-  const newRemaining = Math.max(0, total - newPaid);
+  const newPaid = currentPaid + parsed.data.amount;
+  const paymentValidationError = validatePaidAmount(newPaid, total);
+  if (paymentValidationError) {
+    res.status(400).json({ error: paymentValidationError });
+    return;
+  }
+  const newRemaining = total - newPaid;
 
   const updateData: Record<string, unknown> = {
     paidAmount: String(newPaid),
