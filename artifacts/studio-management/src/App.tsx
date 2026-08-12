@@ -23,7 +23,10 @@ function Router() {
     <Route path="/"><Redirect to="/reception" /></Route>
     <Route path="/reception" component={Reception} /><Route path="/photography" component={Photography} />
     <Route path="/editing" component={Editing} /><Route path="/printing" component={Printing} />
-    <Route path="/delivery" component={Delivery} /><Route path="/admin" component={Admin} />
+    <Route path="/delivery" component={Delivery} />
+    <Route path="/analytics" component={Admin} />
+    <Route path="/admin"><Redirect to="/analytics" /></Route>
+    <Route path="/settings"><Redirect to="/admin/users" /></Route>
     <Route path="/admin/users"><AdminManagement resource="users" /></Route>
     <Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
     <Route path="/admin/roles"><AdminManagement resource="roles" /></Route>
