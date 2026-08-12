@@ -1,12 +1,12 @@
 import { useState } from "react"
 import { Link, useLocation } from "wouter"
-import { Camera, MonitorPlay, Printer, PackageCheck, LayoutDashboard, UserPlus, Search, Archive, LogOut, Settings, Menu, X } from "lucide-react"
+import { Camera, MonitorPlay, Printer, PackageCheck, UserPlus, Search, Archive, LogOut, Settings, Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { icon: UserPlus, label: "Reception", href: "/reception" }, { icon: Camera, label: "Photography", href: "/photography" },
   { icon: MonitorPlay, label: "Editing", href: "/editing" }, { icon: Printer, label: "Printing", href: "/printing" },
-  { icon: PackageCheck, label: "Delivery", href: "/delivery" }, { icon: LayoutDashboard, label: "Admin", href: "/admin" },
+  { icon: PackageCheck, label: "Delivery", href: "/delivery" },
   { icon: Archive, label: "Archive", href: "/archive" }, { icon: Search, label: "Customer Track", href: "/track" },
 ]
 
