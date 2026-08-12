@@ -49,19 +49,12 @@ router.get("/orders", async (req, res): Promise<void> => {
   }
 
   const { status, statuses, date, search } = parsed.data;
-  // from/to for range queries (read directly; will be in parsed.data after next codegen)
   const fromDate = typeof req.query.from === "string" ? req.query.from : undefined;
   const toDate   = typeof req.query.to   === "string" ? req.query.to   : undefined;
 
   let query = db.select().from(ordersTable);
   const conditions = [];
 
-  // Date filtering rules:
-  // - Explicit range (from+to): always apply the range — used by Admin table
-  // - Status-only query (statuses/status without any date param and no search):
-  //   skip date filter entirely so station queues show ALL pending orders
-  //   regardless of when they were created
-  // - Everything else (plain date, or just no params): default to today
   const hasExplicitRange = !!(fromDate && toDate);
   const hasExplicitDate  = !!date;
   const isStatusOnlyQuery = (status || statuses) && !hasExplicitDate && !hasExplicitRange && !search;
@@ -71,19 +64,16 @@ router.get("/orders", async (req, res): Promise<void> => {
       conditions.push(gte(ordersTable.createdAt, new Date(`${fromDate}T00:00:00.000Z`)));
       conditions.push(lte(ordersTable.createdAt, new Date(`${toDate}T23:59:59.999Z`)));
     } else {
-      // Single-date mode (default to today) — used by Admin orders table date pickers
       const filterDate = date ?? new Date().toISOString().slice(0, 10);
       conditions.push(gte(ordersTable.createdAt, new Date(`${filterDate}T00:00:00.000Z`)));
       conditions.push(lte(ordersTable.createdAt, new Date(`${filterDate}T23:59:59.999Z`)));
     }
   }
 
-  // Filter by status (single)
   if (status) {
     conditions.push(eq(ordersTable.status, status));
   }
 
-  // Filter by multiple statuses
   if (statuses) {
     const statusList = statuses.split(",").map((s) => s.trim()).filter(Boolean);
     if (statusList.length > 0) {
@@ -96,7 +86,6 @@ router.get("/orders", async (req, res): Promise<void> => {
     }
   }
 
-  // Search by order number, name, or mobile
   if (search) {
     conditions.push(
       or(
@@ -124,7 +113,6 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   const data = parsed.data;
 
-  // Fill in unit prices if not provided
   const services = data.services.map((s) => ({
     ...s,
     unitPrice: s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0,
@@ -211,7 +199,6 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
       updateData.paidAmount = String(data.paidAmount);
       updateData.remainingAmount = String(Math.max(0, totalAmount - data.paidAmount));
     } else {
-      // Recalculate remaining based on existing paid amount
       const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id));
       if (existing) {
         const paid = parseFloat(String(existing.paidAmount));
@@ -281,7 +268,13 @@ router.patch("/orders/:id/payment", async (req, res): Promise<void> => {
     return;
   }
 
-  const parsed = CollectPaymentBody.safeParse(req.body);
+  // Browser form controls commonly send numeric values as strings (e.g. "80.00").
+  // Normalize the amount before Zod validation so the API accepts both JSON numbers and form-style strings.
+  const normalizedBody = {
+    ...req.body,
+    amount: typeof req.body?.amount === "string" ? Number(req.body.amount) : req.body?.amount,
+  };
+  const parsed = CollectPaymentBody.safeParse(normalizedBody);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
