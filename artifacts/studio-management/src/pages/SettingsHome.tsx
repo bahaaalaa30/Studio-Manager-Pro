@@ -37,7 +37,7 @@ function buildPermissionSet(raw: unknown): PermissionSet {
     const item = permission as Permission;
     if (typeof item.key === "string" && item.key.trim()) result.add(item.key.trim());
     if (typeof item.module === "string" && typeof item.action === "string" && item.module.trim() && item.action.trim()) {
-      result.add(`${item.module.trim()}.${item.action.trim()}`);
+      result.add(`${item.module.trim().toLowerCase()}.${item.action.trim().toLowerCase()}`);
     }
   });
   return result;
