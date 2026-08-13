@@ -21,6 +21,7 @@ type CopiedTooltip = { x: number; y: number };
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
 
 const AUTH_EVENT = 'smp-authenticated';
+const LOGOUT_EVENT = 'smp-logout';
 
 function ProtectedRoutes() {
   return <Layout><Switch>
@@ -48,55 +49,45 @@ function AuthGate() {
 
   useEffect(() => {
     if (location === '/login') return;
-
     let cancelled = false;
     const checkSession = async () => {
       try {
-        const response = await fetch('/api/auth/me', {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          credentials: 'same-origin',
-          cache: 'no-store',
-        });
+        const response = await fetch('/api/auth/me', { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
         if (!cancelled) setAuthState(response.ok ? 'authenticated' : 'unauthenticated');
       } catch {
         if (!cancelled) setAuthState('unauthenticated');
       }
     };
-
     void checkSession();
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    const handleAuthenticated = () => {
-      setAuthState('authenticated');
-      if (location === '/login') navigate('/reception', { replace: true });
+    const handleAuthenticated = () => setAuthState('authenticated');
+    const handleLogout = () => {
+      setAuthState('unauthenticated');
+      navigate('/login', { replace: true });
     };
     window.addEventListener(AUTH_EVENT, handleAuthenticated);
-    return () => window.removeEventListener(AUTH_EVENT, handleAuthenticated);
-  }, [location, navigate]);
+    window.addEventListener(LOGOUT_EVENT, handleLogout);
+    return () => {
+      window.removeEventListener(AUTH_EVENT, handleAuthenticated);
+      window.removeEventListener(LOGOUT_EVENT, handleLogout);
+    };
+  }, [navigate]);
 
   useEffect(() => {
-    if (authState === 'unauthenticated' && location !== '/login') {
-      navigate('/login', { replace: true });
-    }
+    if (authState === 'unauthenticated' && location !== '/login') navigate('/login', { replace: true });
+    if (authState === 'authenticated' && location === '/login') navigate('/reception', { replace: true });
   }, [authState, location, navigate]);
 
   if (location === '/login') {
-    if (authState === 'authenticated') {
-      navigate('/reception', { replace: true });
-      return null;
-    }
+    if (authState === 'authenticated') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
     return <Login />;
   }
 
-  if (authState === 'checking') {
-    return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
-  }
-
+  if (authState === 'checking') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
   if (authState === 'unauthenticated') return null;
-
   return <ProtectedRoutes />;
 }
 
