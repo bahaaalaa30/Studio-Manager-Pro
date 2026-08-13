@@ -36,6 +36,8 @@ export function ensureDatabaseSchema(): Promise<void> {
         CREATE TABLE IF NOT EXISTS smp_permissions (id SERIAL PRIMARY KEY, key TEXT NOT NULL UNIQUE, name TEXT NOT NULL, module TEXT NOT NULL,
           action TEXT NOT NULL, description TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
         CREATE TABLE IF NOT EXISTS smp_users (id SERIAL PRIMARY KEY, name TEXT NOT NULL, username TEXT NOT NULL UNIQUE,
+          password_hash TEXT, password_set_at TIMESTAMPTZ, last_login_at TIMESTAMPTZ, must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+          failed_login_attempts INTEGER NOT NULL DEFAULT 0, locked_until TIMESTAMPTZ,
           role_id INTEGER REFERENCES smp_roles(id) ON DELETE SET NULL, branch_id INTEGER, status TEXT NOT NULL DEFAULT 'ACTIVE',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
         CREATE TABLE IF NOT EXISTS smp_branches (id SERIAL PRIMARY KEY, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE,
@@ -48,9 +50,22 @@ export function ensureDatabaseSchema(): Promise<void> {
           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'smp_branches_manager_fk') THEN
             ALTER TABLE smp_branches ADD CONSTRAINT smp_branches_manager_fk FOREIGN KEY (manager_user_id) REFERENCES smp_users(id) ON DELETE SET NULL;
           END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'smp_users_password_columns') THEN
+            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMPTZ;
+            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+          END IF;
         END $$;
         CREATE TABLE IF NOT EXISTS smp_role_permissions (role_id INTEGER NOT NULL REFERENCES smp_roles(id) ON DELETE CASCADE,
           permission_id INTEGER NOT NULL REFERENCES smp_permissions(id) ON DELETE CASCADE, PRIMARY KEY (role_id, permission_id));
+        CREATE TABLE IF NOT EXISTS smp_user_permissions (
+          user_id INTEGER NOT NULL REFERENCES smp_users(id) ON DELETE CASCADE,
+          permission_id INTEGER NOT NULL REFERENCES smp_permissions(id) ON DELETE CASCADE,
+          granted BOOLEAN NOT NULL DEFAULT TRUE,
+          PRIMARY KEY (user_id, permission_id));
         CREATE TABLE IF NOT EXISTS smp_services (id SERIAL PRIMARY KEY, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE,
           price NUMERIC(10,2) NOT NULL DEFAULT 0, description TEXT, status TEXT NOT NULL DEFAULT 'ACTIVE',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
