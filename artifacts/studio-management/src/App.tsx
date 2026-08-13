@@ -23,15 +23,48 @@ type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
 const AUTH_EVENT = 'smp-authenticated';
 const LOGOUT_EVENT = 'smp-logout';
 
-function ProtectedRoutes() {
+type PermissionSet = Set<string>;
+
+const ROUTE_PERMISSIONS: Record<string, string> = {
+  '/reception': 'reception.view',
+  '/photography': 'photography.view',
+  '/editing': 'editing.view',
+  '/printing': 'printing.view',
+  '/delivery': 'delivery.view',
+  '/analytics': 'analytics.view',
+  '/archive': 'archive.view',
+  '/track': 'track.view',
+  '/admin/users': 'users.view',
+  '/admin/branches': 'branches.view',
+  '/admin/roles': 'roles.view',
+  '/admin/permissions': 'permissions.view',
+  '/admin/services': 'services.view',
+  '/admin/packages': 'packages.view',
+  '/admin/inventory': 'inventory.view',
+};
+
+function getSafeRoute(permissions: PermissionSet) {
+  const preferredRoutes = ['/reception', '/archive', '/track', '/photography', '/editing', '/printing', '/delivery', '/analytics', '/admin/users', '/admin/branches', '/admin/roles', '/admin/services', '/admin/packages', '/admin/inventory'];
+  return preferredRoutes.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/login';
+}
+
+function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
+  const [location] = useLocation();
+  const requiredPermission = ROUTE_PERMISSIONS[location];
+
+  if (requiredPermission && !permissions.has(requiredPermission)) {
+    const safeRoute = getSafeRoute(permissions);
+    return safeRoute === '/login' ? <Redirect to="/login" /> : <Redirect to={safeRoute} />;
+  }
+
   return <Layout><Switch>
-    <Route path="/"><Redirect to="/reception" /></Route>
+    <Route path="/"><Redirect to={getSafeRoute(permissions)} /></Route>
     <Route path="/reception" component={Reception} /><Route path="/photography" component={Photography} />
     <Route path="/editing" component={Editing} /><Route path="/printing" component={Printing} />
     <Route path="/delivery" component={Delivery} />
     <Route path="/analytics" component={Admin} />
-    <Route path="/admin"><Redirect to="/settings" /></Route>
-    <Route path="/settings"><Redirect to="/admin/users" /></Route>
+    <Route path="/admin"><Redirect to={permissions.has('users.view') ? '/settings' : getSafeRoute(permissions)} /></Route>
+    <Route path="/settings"><Redirect to={permissions.has('users.view') ? '/admin/users' : getSafeRoute(permissions)} /></Route>
     <Route path="/admin/users"><AdminManagement resource="users" /></Route>
     <Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
     <Route path="/admin/roles"><AdminManagement resource="roles" /></Route>
@@ -46,6 +79,7 @@ function ProtectedRoutes() {
 function AuthGate() {
   const [location, navigate] = useLocation();
   const [authState, setAuthState] = useState<AuthState>(() => location === '/login' ? 'unauthenticated' : 'checking');
+  const [permissions, setPermissions] = useState<PermissionSet>(new Set());
 
   useEffect(() => {
     if (location === '/login') return;
@@ -53,18 +87,43 @@ function AuthGate() {
     const checkSession = async () => {
       try {
         const response = await fetch('/api/auth/me', { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
-        if (!cancelled) setAuthState(response.ok ? 'authenticated' : 'unauthenticated');
+        if (!response.ok) {
+          if (!cancelled) {
+            setPermissions(new Set());
+            setAuthState('unauthenticated');
+          }
+          return;
+        }
+        const data = await response.json().catch(() => null);
+        const rawPermissions = Array.isArray(data?.user?.permissions)
+          ? data.user.permissions
+          : Array.isArray(data?.permissions)
+            ? data.permissions
+            : [];
+        const nextPermissions = new Set<string>(rawPermissions.filter((value: unknown): value is string => typeof value === 'string'));
+        if (!cancelled) {
+          setPermissions(nextPermissions);
+          setAuthState('authenticated');
+        }
       } catch {
-        if (!cancelled) setAuthState('unauthenticated');
+        if (!cancelled) {
+          setPermissions(new Set());
+          setAuthState('unauthenticated');
+        }
       }
     };
     void checkSession();
     return () => { cancelled = true; };
-  }, []);
+  }, [location]);
 
   useEffect(() => {
-    const handleAuthenticated = () => setAuthState('authenticated');
+    const handleAuthenticated = () => {
+      setAuthState('checking');
+      setPermissions(new Set());
+      navigate('/reception', { replace: true });
+    };
     const handleLogout = () => {
+      setPermissions(new Set());
       setAuthState('unauthenticated');
       navigate('/login', { replace: true });
     };
@@ -78,8 +137,8 @@ function AuthGate() {
 
   useEffect(() => {
     if (authState === 'unauthenticated' && location !== '/login') navigate('/login', { replace: true });
-    if (authState === 'authenticated' && location === '/login') navigate('/reception', { replace: true });
-  }, [authState, location, navigate]);
+    if (authState === 'authenticated' && location === '/login') navigate(getSafeRoute(permissions), { replace: true });
+  }, [authState, location, navigate, permissions]);
 
   if (location === '/login') {
     if (authState === 'authenticated') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
@@ -88,7 +147,7 @@ function AuthGate() {
 
   if (authState === 'checking') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
   if (authState === 'unauthenticated') return null;
-  return <ProtectedRoutes />;
+  return <ProtectedRoutes permissions={permissions} />;
 }
 
 function CopyTrackingLinkHandler() {
