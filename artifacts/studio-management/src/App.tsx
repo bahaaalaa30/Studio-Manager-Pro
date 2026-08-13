@@ -19,33 +19,26 @@ import Login from '@/pages/Login';
 const queryClient = new QueryClient();
 type CopiedTooltip = { x: number; y: number };
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
-
 const AUTH_EVENT = 'smp-authenticated';
 const LOGOUT_EVENT = 'smp-logout';
-
 type PermissionSet = Set<string>;
 
 const ROUTE_PERMISSIONS: Record<string, string> = {
-  '/reception': 'reception.view',
-  '/photography': 'photography.view',
-  '/editing': 'editing.view',
-  '/printing': 'printing.view',
-  '/delivery': 'delivery.view',
-  '/analytics': 'analytics.view',
-  '/archive': 'archive.view',
-  '/track': 'track.view',
-  '/admin/users': 'users.view',
-  '/admin/branches': 'branches.view',
-  '/admin/roles': 'roles.view',
-  '/admin/permissions': 'permissions.view',
-  '/admin/services': 'services.view',
-  '/admin/packages': 'packages.view',
-  '/admin/inventory': 'inventory.view',
+  '/reception': 'reception.view', '/photography': 'photography.view', '/editing': 'editing.view', '/printing': 'printing.view',
+  '/delivery': 'delivery.view', '/analytics': 'analytics.view', '/archive': 'archive.view', '/track': 'track.view',
+  '/admin/users': 'users.view', '/admin/branches': 'branches.view', '/admin/roles': 'roles.view', '/admin/permissions': 'permissions.view',
+  '/admin/services': 'services.view', '/admin/packages': 'packages.view', '/admin/inventory': 'inventory.view',
 };
 
+const ADMIN_ROUTES = ['/admin/users', '/admin/branches', '/admin/roles', '/admin/permissions', '/admin/services', '/admin/packages', '/admin/inventory'];
+
 function getSafeRoute(permissions: PermissionSet) {
-  const preferredRoutes = ['/reception', '/archive', '/track', '/photography', '/editing', '/printing', '/delivery', '/analytics', '/admin/users', '/admin/branches', '/admin/roles', '/admin/services', '/admin/packages', '/admin/inventory'];
+  const preferredRoutes = ['/reception', '/archive', '/track', '/photography', '/editing', '/printing', '/delivery', '/analytics', ...ADMIN_ROUTES];
   return preferredRoutes.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/login';
+}
+
+function getSafeAdminRoute(permissions: PermissionSet) {
+  return ADMIN_ROUTES.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/login';
 }
 
 function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
@@ -63,8 +56,8 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
     <Route path="/editing" component={Editing} /><Route path="/printing" component={Printing} />
     <Route path="/delivery" component={Delivery} />
     <Route path="/analytics" component={Admin} />
-    <Route path="/admin"><Redirect to={getSafeRoute(permissions)} /></Route>
-    <Route path="/settings"><Redirect to={getSafeRoute(permissions)} /></Route>
+    <Route path="/admin"><Redirect to={getSafeAdminRoute(permissions)} /></Route>
+    <Route path="/settings"><Redirect to={getSafeAdminRoute(permissions)} /></Route>
     <Route path="/admin/users"><AdminManagement resource="users" /></Route>
     <Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
     <Route path="/admin/roles"><AdminManagement resource="roles" /></Route>
@@ -80,16 +73,11 @@ function buildPermissionSet(rawPermissions: unknown): PermissionSet {
   const nextPermissions = new Set<string>();
   if (!Array.isArray(rawPermissions)) return nextPermissions;
   for (const permission of rawPermissions) {
-    if (typeof permission === 'string') {
-      nextPermissions.add(permission);
-      continue;
-    }
+    if (typeof permission === 'string') { nextPermissions.add(permission); continue; }
     if (!permission || typeof permission !== 'object') continue;
     const item = permission as { key?: unknown; module?: unknown; action?: unknown };
     if (typeof item.key === 'string' && item.key.trim()) nextPermissions.add(item.key.trim());
-    if (typeof item.module === 'string' && typeof item.action === 'string' && item.module.trim() && item.action.trim()) {
-      nextPermissions.add(`${item.module.trim()}.${item.action.trim()}`);
-    }
+    if (typeof item.module === 'string' && typeof item.action === 'string' && item.module.trim() && item.action.trim()) nextPermissions.add(`${item.module.trim()}.${item.action.trim()}`);
   }
   return nextPermissions;
 }
@@ -105,48 +93,22 @@ function AuthGate() {
     const checkSession = async () => {
       try {
         const response = await fetch('/api/auth/me', { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' });
-        if (!response.ok) {
-          if (!cancelled) {
-            setPermissions(new Set());
-            setAuthState('unauthenticated');
-          }
-          return;
-        }
+        if (!response.ok) { if (!cancelled) { setPermissions(new Set()); setAuthState('unauthenticated'); } return; }
         const data = await response.json().catch(() => null);
         const rawPermissions = Array.isArray(data?.user?.permissions) ? data.user.permissions : Array.isArray(data?.permissions) ? data.permissions : [];
         const nextPermissions = buildPermissionSet(rawPermissions);
-        if (!cancelled) {
-          setPermissions(nextPermissions);
-          setAuthState('authenticated');
-        }
-      } catch {
-        if (!cancelled) {
-          setPermissions(new Set());
-          setAuthState('unauthenticated');
-        }
-      }
+        if (!cancelled) { setPermissions(nextPermissions); setAuthState('authenticated'); }
+      } catch { if (!cancelled) { setPermissions(new Set()); setAuthState('unauthenticated'); } }
     };
     void checkSession();
     return () => { cancelled = true; };
   }, [location]);
 
   useEffect(() => {
-    const handleAuthenticated = () => {
-      setAuthState('checking');
-      setPermissions(new Set());
-      navigate('/reception', { replace: true });
-    };
-    const handleLogout = () => {
-      setPermissions(new Set());
-      setAuthState('unauthenticated');
-      navigate('/login', { replace: true });
-    };
-    window.addEventListener(AUTH_EVENT, handleAuthenticated);
-    window.addEventListener(LOGOUT_EVENT, handleLogout);
-    return () => {
-      window.removeEventListener(AUTH_EVENT, handleAuthenticated);
-      window.removeEventListener(LOGOUT_EVENT, handleLogout);
-    };
+    const handleAuthenticated = () => { setAuthState('checking'); setPermissions(new Set()); navigate('/reception', { replace: true }); };
+    const handleLogout = () => { setPermissions(new Set()); setAuthState('unauthenticated'); navigate('/login', { replace: true }); };
+    window.addEventListener(AUTH_EVENT, handleAuthenticated); window.addEventListener(LOGOUT_EVENT, handleLogout);
+    return () => { window.removeEventListener(AUTH_EVENT, handleAuthenticated); window.removeEventListener(LOGOUT_EVENT, handleLogout); };
   }, [navigate]);
 
   useEffect(() => {
@@ -158,8 +120,7 @@ function AuthGate() {
     if (authState === 'authenticated') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
     return <Login />;
   }
-
-  if (authState === 'checking') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
+  if (authState === 'checking') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" />;
   if (authState === 'unauthenticated') return null;
   return <ProtectedRoutes permissions={permissions} />;
 }
@@ -174,9 +135,7 @@ function CopyTrackingLinkHandler() {
       if (!button || !button.querySelector('.lucide-copy')) return;
       const link = button.parentElement?.querySelector('span.font-mono')?.textContent?.trim();
       if (!link) return;
-      try { await navigator.clipboard.writeText(link); } catch {
-        const textArea = document.createElement('textarea'); textArea.value = link; textArea.setAttribute('readonly', ''); textArea.style.position = 'fixed'; textArea.style.opacity = '0'; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); textArea.remove();
-      }
+      try { await navigator.clipboard.writeText(link); } catch { const textArea = document.createElement('textarea'); textArea.value = link; textArea.setAttribute('readonly', ''); textArea.style.position = 'fixed'; textArea.style.opacity = '0'; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); textArea.remove(); }
       const rect = button.getBoundingClientRect(); setCopiedTooltip({ x: rect.left + rect.width / 2, y: rect.top });
       if (hideTimer) window.clearTimeout(hideTimer); hideTimer = window.setTimeout(() => setCopiedTooltip(null), 1500);
     };
