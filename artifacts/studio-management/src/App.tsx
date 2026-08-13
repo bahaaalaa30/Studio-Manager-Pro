@@ -63,8 +63,8 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
     <Route path="/editing" component={Editing} /><Route path="/printing" component={Printing} />
     <Route path="/delivery" component={Delivery} />
     <Route path="/analytics" component={Admin} />
-    <Route path="/admin"><Redirect to={permissions.has('users.view') ? '/settings' : getSafeRoute(permissions)} /></Route>
-    <Route path="/settings"><Redirect to={permissions.has('users.view') ? '/admin/users' : getSafeRoute(permissions)} /></Route>
+    <Route path="/admin"><Redirect to={getSafeRoute(permissions)} /></Route>
+    <Route path="/settings"><Redirect to={getSafeRoute(permissions)} /></Route>
     <Route path="/admin/users"><AdminManagement resource="users" /></Route>
     <Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
     <Route path="/admin/roles"><AdminManagement resource="roles" /></Route>
@@ -74,6 +74,24 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
     <Route path="/admin/inventory"><AdminManagement resource="inventory" /></Route>
     <Route path="/archive" component={Archive} /><Route path="/track" component={Track} /><Route component={NotFound} />
   </Switch></Layout>;
+}
+
+function buildPermissionSet(rawPermissions: unknown): PermissionSet {
+  const nextPermissions = new Set<string>();
+  if (!Array.isArray(rawPermissions)) return nextPermissions;
+  for (const permission of rawPermissions) {
+    if (typeof permission === 'string') {
+      nextPermissions.add(permission);
+      continue;
+    }
+    if (!permission || typeof permission !== 'object') continue;
+    const item = permission as { key?: unknown; module?: unknown; action?: unknown };
+    if (typeof item.key === 'string' && item.key.trim()) nextPermissions.add(item.key.trim());
+    if (typeof item.module === 'string' && typeof item.action === 'string' && item.module.trim() && item.action.trim()) {
+      nextPermissions.add(`${item.module.trim()}.${item.action.trim()}`);
+    }
+  }
+  return nextPermissions;
 }
 
 function AuthGate() {
@@ -95,19 +113,8 @@ function AuthGate() {
           return;
         }
         const data = await response.json().catch(() => null);
-        const rawPermissions = Array.isArray(data?.user?.permissions)
-          ? data.user.permissions
-          : Array.isArray(data?.permissions)
-            ? data.permissions
-            : [];
-        const nextPermissions = new Set<string>();
-        for (const permission of rawPermissions) {
-          if (typeof permission === 'string') {
-            nextPermissions.add(permission);
-          } else if (permission && typeof permission === 'object' && typeof permission.key === 'string') {
-            nextPermissions.add(permission.key);
-          }
-        }
+        const rawPermissions = Array.isArray(data?.user?.permissions) ? data.user.permissions : Array.isArray(data?.permissions) ? data.permissions : [];
+        const nextPermissions = buildPermissionSet(rawPermissions);
         if (!cancelled) {
           setPermissions(nextPermissions);
           setAuthState('authenticated');
