@@ -17,8 +17,10 @@ type Resource = keyof typeof resources;
 const getResource = (value: string) => (value in resources ? resources[value as Resource] : null);
 const quote = (value: unknown) => value === null || value === undefined ? "NULL" : typeof value === "number" ? String(value) : typeof value === "boolean" ? (value ? "TRUE" : "FALSE") : `'${String(value).replace(/'/g, "''")}'`;
 const hashPassword = (password: string) => { const salt = randomBytes(16).toString("hex"); return `${salt}:${scryptSync(password, salt, 64).toString("hex")}`; };
+const normalizeStatus = (value: unknown) => String(value ?? "").trim().toUpperCase();
 const namePattern = /^[A-Za-z0-9\u0600-\u06FF]+(?: [A-Za-z0-9\u0600-\u06FF]+)+$/;
 const usernamePattern = /^[A-Za-z0-9]+$/;
+const codePattern = /^[A-Za-z0-9_-]+$/;
 const addressPattern = /^[A-Za-z0-9\u0600-\u06FF]+(?:[ ,./#-][A-Za-z0-9\u0600-\u06FF]+)*$/;
 const phonePattern = /^\d{7,15}$/;
 
@@ -28,7 +30,7 @@ function validateUser(data: Record<string, unknown>, isCreate: boolean) {
   const password = typeof data.password === "string" ? data.password : "";
   const roleId = Number(data.role_id);
   const branchId = Number(data.branch_id);
-  const status = String(data.status ?? "");
+  const status = normalizeStatus(data.status);
   const address = String(data.address ?? "").trim();
   const phone = String(data.phone ?? "").trim();
   if (!name || !namePattern.test(name)) return "Name is required and must contain at least two sections using letters/numbers.";
@@ -43,6 +45,23 @@ function validateUser(data: Record<string, unknown>, isCreate: boolean) {
   return null;
 }
 
+function validateBranch(data: Record<string, unknown>) {
+  const name = String(data.name ?? "").trim().replace(/\s+/g, " ");
+  const code = String(data.code ?? "").trim();
+  const address = String(data.address ?? "").trim();
+  const phone = String(data.phone ?? "").trim();
+  const managerUserId = data.manager_user_id === "" || data.manager_user_id === null || data.manager_user_id === undefined ? null : Number(data.manager_user_id);
+  const status = normalizeStatus(data.status);
+  if (!name) return "Branch name is required.";
+  if (!code) return "Branch code is required.";
+  if (!codePattern.test(code)) return "Branch code may contain letters, numbers, hyphens and underscores only.";
+  if (!["ACTIVE", "INACTIVE"].includes(status)) return "Status must be Active or Not Active.";
+  if (address && !addressPattern.test(address)) return "Address may contain letters, numbers, spaces and common address separators only.";
+  if (phone && !phonePattern.test(phone)) return "Phone must contain numbers only and be 7 to 15 digits.";
+  if (managerUserId !== null && (!Number.isInteger(managerUserId) || managerUserId <= 0)) return "Manager must be a valid user.";
+  return null;
+}
+
 router.get("/admin/:resource", async (req, res) => {
   const resource = getResource(req.params.resource);
   if (!resource) return res.status(404).json({ error: "Unknown admin resource" });
@@ -53,26 +72,63 @@ router.get("/admin/:resource", async (req, res) => {
       const result = await db.execute(sql.raw(`SELECT u.id, u.name, u.username, u.role_id, r.name AS role_name, u.branch_id, b.name AS branch_name, u.status, u.address, u.phone, u.must_change_password, u.password_set_at, u.last_login_at FROM smp_users u LEFT JOIN smp_roles r ON r.id = u.role_id LEFT JOIN smp_branches b ON b.id = u.branch_id ${where} ORDER BY u.id DESC LIMIT 200`));
       return res.json(result.rows);
     }
+    if (req.params.resource === "branches") {
+      const where = search ? `WHERE b.name ILIKE '%${search}%' OR b.code ILIKE '%${search}%' OR b.address ILIKE '%${search}%' OR b.phone ILIKE '%${search}%' OR u.name ILIKE '%${search}%'` : "";
+      const result = await db.execute(sql.raw(`SELECT b.id, b.name, b.code, b.address, b.phone, b.manager_user_id, u.name AS manager_name, b.status, b.created_at, b.updated_at FROM smp_branches b LEFT JOIN smp_users u ON u.id = b.manager_user_id ${where} ORDER BY b.id DESC LIMIT 200`));
+      return res.json(result.rows);
+    }
     const where = search ? ` WHERE ${resource.columns.map((c) => `CAST(${c} AS TEXT) ILIKE '%${search}%'`).join(" OR ")}` : "";
     const result = await db.execute(sql.raw(`SELECT * FROM ${resource.table}${where} ORDER BY id DESC LIMIT 200`));
     return res.json(result.rows);
   } catch (error) { req.log.error({ err: error }, "Admin list failed"); return res.status(500).json({ error: "Failed to load admin data" }); }
 });
 
+router.get("/admin/options/users", async (req, res) => {
+  try {
+    const result = await db.execute(sql.raw(`SELECT id, name, username, status FROM smp_users WHERE UPPER(status) = 'ACTIVE' ORDER BY name ASC LIMIT 500`));
+    return res.json(result.rows);
+  } catch (error) { req.log.error({ err: error }, "User options load failed"); return res.status(500).json({ error: "Failed to load users" }); }
+});
+
 router.post("/admin/:resource", async (req, res) => {
   const resource = getResource(req.params.resource);
   if (!resource) return res.status(404).json({ error: "Unknown admin resource" });
   const data = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
+
   if (req.params.resource === "users") {
     const validation = validateUser(data, true);
     if (validation) return res.status(400).json({ error: validation });
     const { name, username, password, role_id, branch_id, status, address, phone } = data;
     try {
-      const result = await db.execute(sql.raw(`INSERT INTO smp_users (name, username, password_hash, password_set_at, must_change_password, role_id, branch_id, status, address, phone) VALUES (${quote(String(name).trim().replace(/\s+/g, " "))}, ${quote(username)}, ${quote(hashPassword(String(password)))}, NOW(), FALSE, ${quote(Number(role_id))}, ${quote(Number(branch_id))}, ${quote(status)}, ${quote(address || null)}, ${quote(phone || null)}) RETURNING id, name, username, role_id, branch_id, status, address, phone, must_change_password, password_set_at, last_login_at`));
+      const roleCheck = await db.execute(sql.raw(`SELECT id FROM smp_roles WHERE id = ${Number(role_id)} AND UPPER(status) = 'ACTIVE' LIMIT 1`));
+      const branchCheck = await db.execute(sql.raw(`SELECT id FROM smp_branches WHERE id = ${Number(branch_id)} AND UPPER(status) = 'ACTIVE' LIMIT 1`));
+      if (!roleCheck.rows.length) return res.status(400).json({ error: "Selected Role is not available." });
+      if (!branchCheck.rows.length) return res.status(400).json({ error: "Selected Branch is not available." });
+      const result = await db.execute(sql.raw(`INSERT INTO smp_users (name, username, password_hash, password_set_at, must_change_password, role_id, branch_id, status, address, phone) VALUES (${quote(String(name).trim().replace(/\s+/g, " "))}, ${quote(String(username).trim())}, ${quote(hashPassword(String(password)))}, NOW(), FALSE, ${Number(role_id)}, ${Number(branch_id)}, ${quote(normalizeStatus(status))}, ${quote(address ? String(address).trim() : null)}, ${quote(phone ? String(phone).trim() : null)}) RETURNING id, name, username, role_id, branch_id, status, address, phone, must_change_password, password_set_at, last_login_at`));
       return res.status(201).json(result.rows[0]);
     } catch (error) { req.log.error({ err: error }, "User create failed"); return res.status(400).json({ error: "Failed to create user. Username may already exist or the selected role/branch is invalid." }); }
   }
-  const fields = resource.columns.filter((c) => data[c] !== undefined);
+
+  if (req.params.resource === "branches") {
+    const validation = validateBranch(data);
+    if (validation) return res.status(400).json({ error: validation });
+    const name = String(data.name).trim().replace(/\s+/g, " ");
+    const code = String(data.code).trim();
+    const address = data.address ? String(data.address).trim() : null;
+    const phone = data.phone ? String(data.phone).trim() : null;
+    const managerUserId = data.manager_user_id === "" || data.manager_user_id === null || data.manager_user_id === undefined ? null : Number(data.manager_user_id);
+    const status = normalizeStatus(data.status);
+    try {
+      if (managerUserId !== null) {
+        const manager = await db.execute(sql.raw(`SELECT id FROM smp_users WHERE id = ${managerUserId} AND UPPER(status) = 'ACTIVE' LIMIT 1`));
+        if (!manager.rows.length) return res.status(400).json({ error: "Selected manager is not an active user." });
+      }
+      const result = await db.execute(sql.raw(`INSERT INTO smp_branches (name, code, address, phone, manager_user_id, status) VALUES (${quote(name)}, ${quote(code)}, ${quote(address)}, ${quote(phone)}, ${managerUserId === null ? "NULL" : String(managerUserId)}, ${quote(status)}) RETURNING *`));
+      return res.status(201).json(result.rows[0]);
+    } catch (error) { req.log.error({ err: error }, "Branch create failed"); return res.status(400).json({ error: "Failed to create branch. Branch code may already exist or the selected manager is invalid." }); }
+  }
+
+  const fields = resource.columns.filter((c) => data[c] !== undefined && data[c] !== "");
   if (!fields.length) return res.status(400).json({ error: "No valid fields supplied" });
   try {
     const values = fields.map((field) => quote(data[field]));
@@ -95,13 +151,43 @@ router.patch("/admin/:resource/:id", async (req, res) => {
     const validation = validateUser(merged, false);
     if (validation) return res.status(400).json({ error: validation });
     try {
-      const sets = ["name", "username", "role_id", "branch_id", "status", "address", "phone"].filter((field) => data[field] !== undefined).map((field) => `${field} = ${quote(data[field] === "" ? null : data[field])}`);
+      const roleId = Number(merged.role_id);
+      const branchId = Number(merged.branch_id);
+      const roleCheck = await db.execute(sql.raw(`SELECT id FROM smp_roles WHERE id = ${roleId} AND UPPER(status) = 'ACTIVE' LIMIT 1`));
+      const branchCheck = await db.execute(sql.raw(`SELECT id FROM smp_branches WHERE id = ${branchId} AND UPPER(status) = 'ACTIVE' LIMIT 1`));
+      if (!roleCheck.rows.length) return res.status(400).json({ error: "Selected Role is not available." });
+      if (!branchCheck.rows.length) return res.status(400).json({ error: "Selected Branch is not available." });
+      const sets = ["name", "username", "role_id", "branch_id", "status", "address", "phone"].filter((field) => data[field] !== undefined).map((field) => `${field} = ${quote(data[field] === "" ? null : field === "status" ? normalizeStatus(data[field]) : field === "name" ? String(data[field]).trim().replace(/\s+/g, " ") : data[field])}`);
       if (typeof data.password === "string" && data.password.length) sets.push(`password_hash = ${quote(hashPassword(data.password))}`, "password_set_at = NOW()");
       if (!sets.length) return res.status(400).json({ error: "No changes supplied" });
       sets.push("updated_at = NOW()");
       const result = await db.execute(sql.raw(`UPDATE smp_users SET ${sets.join(", ")} WHERE id = ${id} RETURNING id, name, username, role_id, branch_id, status, address, phone, must_change_password, password_set_at, last_login_at`));
       return res.json(result.rows[0]);
     } catch (error) { req.log.error({ err: error }, "User update failed"); return res.status(400).json({ error: "Failed to update user. Username may already exist or the selected role/branch is invalid." }); }
+  }
+
+  if (req.params.resource === "branches") {
+    const existing = await db.execute(sql.raw(`SELECT id, name, code, address, phone, manager_user_id, status FROM smp_branches WHERE id = ${id} LIMIT 1`));
+    if (!existing.rows.length) return res.status(404).json({ error: "Record not found" });
+    const merged = { ...(existing.rows[0] as Record<string, unknown>), ...data };
+    const validation = validateBranch(merged);
+    if (validation) return res.status(400).json({ error: validation });
+    const managerUserId = merged.manager_user_id === "" || merged.manager_user_id === null || merged.manager_user_id === undefined ? null : Number(merged.manager_user_id);
+    try {
+      if (managerUserId !== null) {
+        const manager = await db.execute(sql.raw(`SELECT id FROM smp_users WHERE id = ${managerUserId} AND UPPER(status) = 'ACTIVE' LIMIT 1`));
+        if (!manager.rows.length) return res.status(400).json({ error: "Selected manager is not an active user." });
+      }
+      const fields = ["name", "code", "address", "phone", "manager_user_id", "status"].filter((field) => data[field] !== undefined);
+      if (!fields.length) return res.status(400).json({ error: "No changes supplied" });
+      const sets = fields.map((field) => {
+        const value = field === "manager_user_id" ? managerUserId : field === "status" ? normalizeStatus(data[field]) : field === "name" || field === "code" || field === "address" || field === "phone" ? (data[field] === "" ? null : String(data[field]).trim()) : data[field];
+        return `${field} = ${quote(value)}`;
+      });
+      sets.push("updated_at = NOW()");
+      const result = await db.execute(sql.raw(`UPDATE smp_branches SET ${sets.join(", ")} WHERE id = ${id} RETURNING *`));
+      return res.json(result.rows[0]);
+    } catch (error) { req.log.error({ err: error }, "Branch update failed"); return res.status(400).json({ error: "Failed to update branch. Branch code may already exist or the selected manager is invalid." }); }
   }
 
   const fields = resource.columns.filter((c) => data[c] !== undefined);
