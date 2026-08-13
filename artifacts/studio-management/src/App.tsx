@@ -20,57 +20,9 @@ const queryClient = new QueryClient();
 type CopiedTooltip = { x: number; y: number };
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
 
-function ProtectedRouter() {
-  const [location, navigate] = useLocation();
-  const [authState, setAuthState] = useState<AuthState>('checking');
+const AUTH_EVENT = 'smp-authenticated';
 
-  // Check the session once when the protected application mounts.
-  // Do not depend on `location`: doing so makes every route change call /me again,
-  // and navigating between /login and the protected app can create a request loop.
-  useEffect(() => {
-    let cancelled = false;
-    const checkSession = async () => {
-      try {
-        const response = await fetch('/api/auth/me', {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          credentials: 'same-origin',
-          cache: 'no-store',
-        });
-        if (cancelled) return;
-        setAuthState(response.ok ? 'authenticated' : 'unauthenticated');
-      } catch {
-        if (!cancelled) setAuthState('unauthenticated');
-      }
-    };
-    void checkSession();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (authState === 'unauthenticated' && location !== '/login') {
-      navigate('/login', { replace: true });
-    }
-  }, [authState, location, navigate]);
-
-  useEffect(() => {
-    if (authState === 'authenticated' && location === '/login') {
-      navigate('/reception', { replace: true });
-    }
-  }, [authState, location, navigate]);
-
-  if (authState === 'checking') {
-    return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
-  }
-
-  if (authState === 'unauthenticated') {
-    return <Login />;
-  }
-
-  if (location === '/login') {
-    return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
-  }
-
+function ProtectedRoutes() {
   return <Layout><Switch>
     <Route path="/"><Redirect to="/reception" /></Route>
     <Route path="/reception" component={Reception} /><Route path="/photography" component={Photography} />
@@ -88,6 +40,64 @@ function ProtectedRouter() {
     <Route path="/admin/inventory"><AdminManagement resource="inventory" /></Route>
     <Route path="/archive" component={Archive} /><Route path="/track" component={Track} /><Route component={NotFound} />
   </Switch></Layout>;
+}
+
+function AuthGate() {
+  const [location, navigate] = useLocation();
+  const [authState, setAuthState] = useState<AuthState>(() => location === '/login' ? 'unauthenticated' : 'checking');
+
+  useEffect(() => {
+    if (location === '/login') return;
+
+    let cancelled = false;
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/auth/me', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        if (!cancelled) setAuthState(response.ok ? 'authenticated' : 'unauthenticated');
+      } catch {
+        if (!cancelled) setAuthState('unauthenticated');
+      }
+    };
+
+    void checkSession();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const handleAuthenticated = () => {
+      setAuthState('authenticated');
+      if (location === '/login') navigate('/reception', { replace: true });
+    };
+    window.addEventListener(AUTH_EVENT, handleAuthenticated);
+    return () => window.removeEventListener(AUTH_EVENT, handleAuthenticated);
+  }, [location, navigate]);
+
+  useEffect(() => {
+    if (authState === 'unauthenticated' && location !== '/login') {
+      navigate('/login', { replace: true });
+    }
+  }, [authState, location, navigate]);
+
+  if (location === '/login') {
+    if (authState === 'authenticated') {
+      navigate('/reception', { replace: true });
+      return null;
+    }
+    return <Login />;
+  }
+
+  if (authState === 'checking') {
+    return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
+  }
+
+  if (authState === 'unauthenticated') return null;
+
+  return <ProtectedRoutes />;
 }
 
 function CopyTrackingLinkHandler() {
@@ -112,6 +122,6 @@ function CopyTrackingLinkHandler() {
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><CopyTrackingLinkHandler /><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Route path="/login" component={Login} /><Route path="*" component={ProtectedRouter} /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><CopyTrackingLinkHandler /><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AuthGate /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
 }
 export default App;
