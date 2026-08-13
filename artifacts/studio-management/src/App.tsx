@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
+import { Route, Switch, Router as WouterRouter, Redirect, useLocation } from 'wouter';
 import { Layout } from '@/components/layout/Layout';
 import Reception from '@/pages/Reception';
 import Photography from '@/pages/Photography';
@@ -14,11 +14,46 @@ import Admin from '@/pages/Admin';
 import AdminManagement from '@/pages/AdminManagement';
 import Archive from '@/pages/Archive';
 import Track from '@/pages/Track';
+import Login from '@/pages/Login';
 
 const queryClient = new QueryClient();
 type CopiedTooltip = { x: number; y: number };
 
-function Router() {
+type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
+
+function ProtectedRouter() {
+  const [location, navigate] = useLocation();
+  const [authState, setAuthState] = useState<AuthState>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+      .then((response) => {
+        if (cancelled) return;
+        setAuthState(response.ok ? 'authenticated' : 'unauthenticated');
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState('unauthenticated');
+      });
+    return () => { cancelled = true; };
+  }, [location]);
+
+  if (authState === 'checking') {
+    return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
+  }
+
+  if (authState === 'unauthenticated') {
+    if (location !== '/login') {
+      navigate('/login', { replace: true });
+    }
+    return <Login />;
+  }
+
+  if (location === '/login') {
+    navigate('/reception', { replace: true });
+    return null;
+  }
+
   return <Layout><Switch>
     <Route path="/"><Redirect to="/reception" /></Route>
     <Route path="/reception" component={Reception} /><Route path="/photography" component={Photography} />
@@ -59,5 +94,7 @@ function CopyTrackingLinkHandler() {
   return copiedTooltip ? <div role="status" aria-live="polite" className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg" style={{ left: copiedTooltip.x, top: copiedTooltip.y - 8 }}>Copied!<span className="absolute left-1/2 top-full -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-slate-900" /></div> : null;
 }
 
-function App() { return <QueryClientProvider client={queryClient}><TooltipProvider><CopyTrackingLinkHandler /><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>; }
+function App() {
+  return <QueryClientProvider client={queryClient}><TooltipProvider><CopyTrackingLinkHandler /><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Route path="/login" component={Login} /><Route path="*" component={ProtectedRouter} /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+}
 export default App;
