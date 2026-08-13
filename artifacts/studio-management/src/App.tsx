@@ -15,6 +15,7 @@ import AdminManagement from '@/pages/AdminManagement';
 import Archive from '@/pages/Archive';
 import Track from '@/pages/Track';
 import Login from '@/pages/Login';
+import SettingsHome from '@/pages/SettingsHome';
 
 const queryClient = new QueryClient();
 type CopiedTooltip = { x: number; y: number };
@@ -26,6 +27,7 @@ type PermissionSet = Set<string>;
 const ROUTE_PERMISSIONS: Record<string, string> = {
   '/reception': 'reception.view', '/photography': 'photography.view', '/editing': 'editing.view', '/printing': 'printing.view',
   '/delivery': 'delivery.view', '/analytics': 'analytics.view', '/archive': 'archive.view', '/track': 'track.view',
+  '/settings': 'admin.access', '/admin': 'admin.access',
   '/admin/users': 'users.view', '/admin/branches': 'branches.view', '/admin/roles': 'roles.view', '/admin/permissions': 'permissions.view',
   '/admin/services': 'services.view', '/admin/packages': 'packages.view', '/admin/inventory': 'inventory.view',
 };
@@ -38,7 +40,7 @@ function getSafeRoute(permissions: PermissionSet) {
 }
 
 function getSafeAdminRoute(permissions: PermissionSet) {
-  return ADMIN_ROUTES.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/login';
+  return ADMIN_ROUTES.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/settings';
 }
 
 function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
@@ -46,7 +48,9 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
   const requiredPermission = ROUTE_PERMISSIONS[location];
 
   if (requiredPermission && !permissions.has(requiredPermission)) {
-    const safeRoute = getSafeRoute(permissions);
+    const safeRoute = location === '/settings' || location === '/admin'
+      ? getSafeRoute(permissions)
+      : getSafeRoute(permissions);
     return safeRoute === '/login' ? <Redirect to="/login" /> : <Redirect to={safeRoute} />;
   }
 
@@ -56,8 +60,8 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
     <Route path="/editing" component={Editing} /><Route path="/printing" component={Printing} />
     <Route path="/delivery" component={Delivery} />
     <Route path="/analytics" component={Admin} />
-    <Route path="/admin"><Redirect to={getSafeAdminRoute(permissions)} /></Route>
-    <Route path="/settings"><Redirect to={getSafeAdminRoute(permissions)} /></Route>
+    <Route path="/settings"><SettingsHome /></Route>
+    <Route path="/admin"><Redirect to="/settings" /></Route>
     <Route path="/admin/users"><AdminManagement resource="users" /></Route>
     <Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
     <Route path="/admin/roles"><AdminManagement resource="roles" /></Route>
@@ -73,7 +77,7 @@ function buildPermissionSet(rawPermissions: unknown): PermissionSet {
   const nextPermissions = new Set<string>();
   if (!Array.isArray(rawPermissions)) return nextPermissions;
   for (const permission of rawPermissions) {
-    if (typeof permission === 'string') { nextPermissions.add(permission); continue; }
+    if (typeof permission === 'string') { nextPermissions.add(permission.trim()); continue; }
     if (!permission || typeof permission !== 'object') continue;
     const item = permission as { key?: unknown; module?: unknown; action?: unknown };
     if (typeof item.key === 'string' && item.key.trim()) nextPermissions.add(item.key.trim());
