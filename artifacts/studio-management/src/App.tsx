@@ -28,8 +28,8 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/reception': 'reception.view', '/photography': 'photography.view', '/editing': 'editing.view', '/printing': 'printing.view',
   '/delivery': 'delivery.view', '/analytics': 'analytics.view', '/archive': 'archive.view', '/track': 'track.view',
   '/settings': 'admin.access', '/admin': 'admin.access',
-  '/admin/users': 'users.view', '/admin/branches': 'branches.view', '/admin/roles': 'roles.view', '/admin/permissions': 'permissions.view',
-  '/admin/services': 'services.view', '/admin/packages': 'packages.view', '/admin/inventory': 'inventory.view',
+  '/admin/users': 'users.view', '/admin/branches': 'branches.manage', '/admin/roles': 'roles.manage', '/admin/permissions': 'permissions.manage',
+  '/admin/services': 'services.manage', '/admin/packages': 'packages.manage', '/admin/inventory': 'inventory.view',
 };
 
 const ADMIN_ROUTES = ['/admin/users', '/admin/branches', '/admin/roles', '/admin/permissions', '/admin/services', '/admin/packages', '/admin/inventory'];
@@ -48,9 +48,7 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
   const requiredPermission = ROUTE_PERMISSIONS[location];
 
   if (requiredPermission && !permissions.has(requiredPermission)) {
-    const safeRoute = location === '/settings' || location === '/admin'
-      ? getSafeAdminRoute(permissions)
-      : getSafeRoute(permissions);
+    const safeRoute = location === '/settings' || location === '/admin' ? getSafeAdminRoute(permissions) : getSafeRoute(permissions);
     return safeRoute === '/login' ? <Redirect to="/login" /> : <Redirect to={safeRoute} />;
   }
 
@@ -58,16 +56,11 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
     <Route path="/"><Redirect to={getSafeRoute(permissions)} /></Route>
     <Route path="/reception" component={Reception} /><Route path="/photography" component={Photography} />
     <Route path="/editing" component={Editing} /><Route path="/printing" component={Printing} />
-    <Route path="/delivery" component={Delivery} />
-    <Route path="/analytics" component={Admin} />
-    <Route path="/settings"><SettingsHome /></Route>
-    <Route path="/admin"><Redirect to="/settings" /></Route>
-    <Route path="/admin/users"><AdminManagement resource="users" /></Route>
-    <Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
-    <Route path="/admin/roles"><AdminManagement resource="roles" /></Route>
-    <Route path="/admin/permissions"><AdminManagement resource="permissions" /></Route>
-    <Route path="/admin/services"><AdminManagement resource="services" /></Route>
-    <Route path="/admin/packages"><AdminManagement resource="packages" /></Route>
+    <Route path="/delivery" component={Delivery} /><Route path="/analytics" component={Admin} />
+    <Route path="/settings"><SettingsHome /></Route><Route path="/admin"><Redirect to="/settings" /></Route>
+    <Route path="/admin/users"><AdminManagement resource="users" /></Route><Route path="/admin/branches"><AdminManagement resource="branches" /></Route>
+    <Route path="/admin/roles"><AdminManagement resource="roles" /></Route><Route path="/admin/permissions"><AdminManagement resource="permissions" /></Route>
+    <Route path="/admin/services"><AdminManagement resource="services" /></Route><Route path="/admin/packages"><AdminManagement resource="packages" /></Route>
     <Route path="/admin/inventory"><AdminManagement resource="inventory" /></Route>
     <Route path="/archive" component={Archive} /><Route path="/track" component={Track} /><Route component={NotFound} />
   </Switch></Layout>;
@@ -148,8 +141,5 @@ function CopyTrackingLinkHandler() {
   return copiedTooltip ? <div role="status" aria-live="polite" className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg" style={{ left: copiedTooltip.x, top: copiedTooltip.y - 8 }}>Copied!<span className="absolute left-1/2 top-full -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-slate-900" /></div> : null;
 }
 
-function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter><AuthGate /><CopyTrackingLinkHandler /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
-}
-
+function App() { return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter><AuthGate /><CopyTrackingLinkHandler /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>; }
 export default App;
