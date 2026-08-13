@@ -120,7 +120,7 @@ function AuthGate() {
     if (authState === 'authenticated') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
     return <Login />;
   }
-  if (authState === 'checking') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" />;
+  if (authState === 'checking') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
   if (authState === 'unauthenticated') return null;
   return <ProtectedRoutes permissions={permissions} />;
 }
@@ -145,6 +145,7 @@ function CopyTrackingLinkHandler() {
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><CopyTrackingLinkHandler /><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AuthGate /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter><AuthGate /><CopyTrackingLinkHandler /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
 }
+
 export default App;
