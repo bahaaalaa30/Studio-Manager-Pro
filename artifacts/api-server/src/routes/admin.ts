@@ -85,6 +85,57 @@ router.patch("/admin/:resource/:id", async (req, res) => {
   } catch (error) { req.log.error({ err: error }, "Admin update failed"); return res.status(400).json({ error: "Failed to update record" }); }
 });
 
+router.get("/admin/roles/:id/permissions", async (req, res) => {
+  const roleId = Number(req.params.id);
+  if (!Number.isInteger(roleId)) return res.status(400).json({ error: "Invalid role id" });
+  try {
+    const result = await db.execute(sql.raw(`SELECT p.id, p.key, p.name, p.module, p.action, p.description, (rp.role_id IS NOT NULL) AS granted
+      FROM smp_permissions p LEFT JOIN smp_role_permissions rp ON rp.permission_id = p.id AND rp.role_id = ${roleId}
+      ORDER BY p.module, p.action, p.key`));
+    return res.json(result.rows);
+  } catch (error) { req.log.error({ err: error }, "Role permissions load failed"); return res.status(500).json({ error: "Failed to load role permissions" }); }
+});
+
+router.put("/admin/roles/:id/permissions", async (req, res) => {
+  const roleId = Number(req.params.id);
+  const permissionIds = Array.isArray(req.body?.permission_ids) ? req.body.permission_ids.map(Number).filter(Number.isInteger) : [];
+  if (!Number.isInteger(roleId)) return res.status(400).json({ error: "Invalid role id" });
+  try {
+    await db.execute(sql.raw(`DELETE FROM smp_role_permissions WHERE role_id = ${roleId}`));
+    if (permissionIds.length) {
+      const values = permissionIds.map((permissionId: number) => `(${roleId}, ${permissionId})`).join(",");
+      await db.execute(sql.raw(`INSERT INTO smp_role_permissions (role_id, permission_id) VALUES ${values} ON CONFLICT DO NOTHING`));
+    }
+    return res.json({ role_id: roleId, permission_ids: permissionIds });
+  } catch (error) { req.log.error({ err: error }, "Role permissions update failed"); return res.status(400).json({ error: "Failed to update role permissions" }); }
+});
+
+router.get("/admin/users/:id/permissions", async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) return res.status(400).json({ error: "Invalid user id" });
+  try {
+    const result = await db.execute(sql.raw(`SELECT p.id, p.key, p.name, p.module, p.action, p.description, up.granted AS override_granted
+      FROM smp_permissions p LEFT JOIN smp_user_permissions up ON up.permission_id = p.id AND up.user_id = ${userId}
+      ORDER BY p.module, p.action, p.key`));
+    return res.json(result.rows);
+  } catch (error) { req.log.error({ err: error }, "User permissions load failed"); return res.status(500).json({ error: "Failed to load user permissions" }); }
+});
+
+router.put("/admin/users/:id/permissions", async (req, res) => {
+  const userId = Number(req.params.id);
+  const overrides = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+  if (!Number.isInteger(userId)) return res.status(400).json({ error: "Invalid user id" });
+  try {
+    await db.execute(sql.raw(`DELETE FROM smp_user_permissions WHERE user_id = ${userId}`));
+    for (const item of overrides) {
+      const permissionId = Number(item?.permission_id);
+      if (!Number.isInteger(permissionId) || typeof item?.granted !== "boolean") continue;
+      await db.execute(sql.raw(`INSERT INTO smp_user_permissions (user_id, permission_id, granted) VALUES (${userId}, ${permissionId}, ${item.granted ? "TRUE" : "FALSE"}) ON CONFLICT (user_id, permission_id) DO UPDATE SET granted = EXCLUDED.granted`));
+    }
+    return res.json({ user_id: userId, permissions: overrides });
+  } catch (error) { req.log.error({ err: error }, "User permissions update failed"); return res.status(400).json({ error: "Failed to update user permissions" }); }
+});
+
 router.delete("/admin/:resource/:id", async (req, res) => {
   const resource = getResource(req.params.resource);
   if (!resource) return res.status(404).json({ error: "Unknown admin resource" });
