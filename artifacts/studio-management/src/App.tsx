@@ -49,7 +49,7 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
 
   if (requiredPermission && !permissions.has(requiredPermission)) {
     const safeRoute = location === '/settings' || location === '/admin'
-      ? getSafeRoute(permissions)
+      ? getSafeAdminRoute(permissions)
       : getSafeRoute(permissions);
     return safeRoute === '/login' ? <Redirect to="/login" /> : <Redirect to={safeRoute} />;
   }
@@ -77,11 +77,11 @@ function buildPermissionSet(rawPermissions: unknown): PermissionSet {
   const nextPermissions = new Set<string>();
   if (!Array.isArray(rawPermissions)) return nextPermissions;
   for (const permission of rawPermissions) {
-    if (typeof permission === 'string') { nextPermissions.add(permission.trim()); continue; }
+    if (typeof permission === 'string') { nextPermissions.add(permission.trim().toLowerCase()); continue; }
     if (!permission || typeof permission !== 'object') continue;
     const item = permission as { key?: unknown; module?: unknown; action?: unknown };
-    if (typeof item.key === 'string' && item.key.trim()) nextPermissions.add(item.key.trim());
-    if (typeof item.module === 'string' && typeof item.action === 'string' && item.module.trim() && item.action.trim()) nextPermissions.add(`${item.module.trim()}.${item.action.trim()}`);
+    if (typeof item.key === 'string' && item.key.trim()) nextPermissions.add(item.key.trim().toLowerCase());
+    if (typeof item.module === 'string' && typeof item.action === 'string' && item.module.trim() && item.action.trim()) nextPermissions.add(`${item.module.trim().toLowerCase()}.${item.action.trim().toLowerCase()}`);
   }
   return nextPermissions;
 }
