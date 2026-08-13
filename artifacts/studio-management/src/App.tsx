@@ -18,40 +18,57 @@ import Login from '@/pages/Login';
 
 const queryClient = new QueryClient();
 type CopiedTooltip = { x: number; y: number };
-
 type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
 
 function ProtectedRouter() {
   const [location, navigate] = useLocation();
   const [authState, setAuthState] = useState<AuthState>('checking');
 
+  // Check the session once when the protected application mounts.
+  // Do not depend on `location`: doing so makes every route change call /me again,
+  // and navigating between /login and the protected app can create a request loop.
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/auth/me', { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
-      .then((response) => {
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/auth/me', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
         if (cancelled) return;
         setAuthState(response.ok ? 'authenticated' : 'unauthenticated');
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setAuthState('unauthenticated');
-      });
+      }
+    };
+    void checkSession();
     return () => { cancelled = true; };
-  }, [location]);
+  }, []);
+
+  useEffect(() => {
+    if (authState === 'unauthenticated' && location !== '/login') {
+      navigate('/login', { replace: true });
+    }
+  }, [authState, location, navigate]);
+
+  useEffect(() => {
+    if (authState === 'authenticated' && location === '/login') {
+      navigate('/reception', { replace: true });
+    }
+  }, [authState, location, navigate]);
 
   if (authState === 'checking') {
     return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
   }
 
   if (authState === 'unauthenticated') {
-    if (location !== '/login') {
-      navigate('/login', { replace: true });
-    }
     return <Login />;
   }
 
   if (location === '/login') {
-    navigate('/reception', { replace: true });
-    return null;
+    return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
   }
 
   return <Layout><Switch>
