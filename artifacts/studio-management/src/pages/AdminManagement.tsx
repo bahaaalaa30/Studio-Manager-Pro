@@ -1,129 +1,111 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Plus, Search, Pencil, Trash2, ArrowLeft, ShieldCheck, Building2, Users, KeyRound, BriefcaseBusiness, Boxes, PackageCheck, SlidersHorizontal, ChevronLeft, ChevronRight, X, Save } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, ArrowLeft, ShieldCheck, Building2, Users, KeyRound, BriefcaseBusiness, Boxes, PackageCheck, SlidersHorizontal, ChevronLeft, ChevronRight, X, Save, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const configs = {
-  users: { title: "Users", description: "Manage staff accounts, roles and branch assignments.", icon: Users, fields: ["name", "username", "role_id", "branch_id", "status"], labels: { name: "Name", username: "Username", role_id: "Role ID", branch_id: "Branch ID", status: "Status" } },
+type Resource = "users" | "branches" | "roles" | "permissions" | "services" | "packages" | "inventory";
+type RecordData = Record<string, unknown> & { id?: number };
+type Option = { id: number; name: string; status?: string };
+type Config = { title: string; description: string; icon: typeof Users; fields: string[]; labels: Record<string, string> };
+
+const configs: Record<Resource, Config> = {
+  users: { title: "Users", description: "Manage staff accounts, credentials, roles and branch assignments.", icon: Users, fields: ["name", "username", "role_id", "branch_id", "status", "address", "phone"], labels: { name: "Name", username: "Username", role_id: "Role", branch_id: "Assign Branch", status: "Status", address: "Address", phone: "Phone" } },
   branches: { title: "Branches", description: "Manage studio branches and branch managers.", icon: Building2, fields: ["name", "code", "address", "phone", "manager_user_id", "status"], labels: { name: "Branch Name", code: "Code", address: "Address", phone: "Phone", manager_user_id: "Manager User ID", status: "Status" } },
   roles: { title: "Roles", description: "Define reusable staff roles and access levels.", icon: ShieldCheck, fields: ["name", "description", "status"], labels: { name: "Role Name", description: "Description", status: "Status" } },
   permissions: { title: "Permissions", description: "Define granular actions available to roles.", icon: KeyRound, fields: ["key", "name", "module", "action", "description"], labels: { key: "Permission Key", name: "Name", module: "Module", action: "Action", description: "Description" } },
   services: { title: "Services", description: "Manage services used when creating orders.", icon: BriefcaseBusiness, fields: ["name", "code", "price", "description", "status"], labels: { name: "Service Name", code: "Code", price: "Price", description: "Description", status: "Status" } },
   packages: { title: "Packages", description: "Manage service packages and their pricing.", icon: Boxes, fields: ["name", "code", "price", "description", "status"], labels: { name: "Package Name", code: "Code", price: "Price", description: "Description", status: "Status" } },
   inventory: { title: "Inventory Items", description: "Manage inventory master items and low-stock thresholds.", icon: PackageCheck, fields: ["name", "sku", "category", "unit", "quantity", "minimum_quantity", "status"], labels: { name: "Item Name", sku: "SKU", category: "Category", unit: "Unit", quantity: "Quantity", minimum_quantity: "Minimum Quantity", status: "Status" } },
-} as const;
-type Resource = keyof typeof configs;
-type RecordData = Record<string, unknown> & { id?: number };
+};
 
 const navigation: { key: Resource; label: string }[] = [
-  { key: "users", label: "Users" }, { key: "branches", label: "Branches" }, { key: "roles", label: "Roles" },
-  { key: "permissions", label: "Permissions" }, { key: "services", label: "Services" }, { key: "packages", label: "Packages" }, { key: "inventory", label: "Inventory" },
+  { key: "users", label: "Users" }, { key: "branches", label: "Branches" }, { key: "roles", label: "Roles" }, { key: "permissions", label: "Permissions" },
+  { key: "services", label: "Services" }, { key: "packages", label: "Packages" }, { key: "inventory", label: "Inventory" },
 ];
 
 function display(value: unknown) { return value === null || value === undefined || value === "" ? "—" : String(value); }
 function inputType(field: string) { return ["price", "quantity", "minimum_quantity", "role_id", "branch_id", "manager_user_id"].includes(field) ? "number" : "text"; }
-function statusClass(value: unknown) { const s = String(value ?? "").toLowerCase(); return s === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : s === "inactive" || s === "disabled" ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"; }
+function statusClass(value: unknown) { return String(value ?? "").toLowerCase() === "active" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"; }
+async function readApiResponse(response: Response) { const text = await response.text(); if (!text) return null; const contentType = response.headers.get("content-type") ?? ""; if (contentType.includes("application/json")) { try { return JSON.parse(text) as unknown; } catch { return { error: "The server returned invalid JSON." }; } } return { error: text.replace(/<[^>]*>/g, "").trim() || `Request failed with status ${response.status}.` }; }
+function apiError(data: unknown, fallback: string) { return data && typeof data === "object" && "error" in data && typeof (data as { error?: unknown }).error === "string" ? (data as { error: string }).error : fallback; }
+function formSignature(form: Record<string, string>) { return JSON.stringify(Object.keys(form).sort().reduce<Record<string, string>>((acc, key) => { acc[key] = form[key] ?? ""; return acc; }, {})); }
 
-async function readApiResponse(response: Response) {
-  const text = await response.text();
-  if (!text) return null;
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    try { return JSON.parse(text) as unknown; } catch { return { error: "The server returned invalid JSON." }; }
-  }
-  return { error: text.replace(/<[^>]*>/g, "").trim() || `Request failed with status ${response.status}.` };
-}
-
-function apiError(data: unknown, fallback: string) {
-  if (data && typeof data === "object" && "error" in data && typeof (data as { error?: unknown }).error === "string") {
-    return (data as { error: string }).error;
-  }
-  return fallback;
+function validateUser(form: Record<string, string>, isCreate: boolean): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const name = form.name?.trim().replace(/\s+/g, " ") ?? "";
+  const username = form.username?.trim() ?? "";
+  const password = form.password ?? "";
+  const address = form.address?.trim() ?? "";
+  const phone = form.phone?.trim() ?? "";
+  if (!name) errors.name = "Name is required.";
+  else if (!/^[A-Za-z0-9\u0600-\u06FF]+(?: [A-Za-z0-9\u0600-\u06FF]+)+$/.test(name)) errors.name = "Enter at least two sections using letters and numbers only.";
+  if (!username) errors.username = "Username is required.";
+  else if (username.length < 4) errors.username = "Username must be at least 4 characters.";
+  else if (!/^[A-Za-z0-9]+$/.test(username)) errors.username = "Username may contain letters and numbers only.";
+  if (isCreate && !password) errors.password = "Password is required.";
+  else if (password && password.length < 4) errors.password = "Password must be at least 4 characters.";
+  if (!form.role_id) errors.role_id = "Role is required.";
+  if (!form.branch_id) errors.branch_id = "Assign Branch is required.";
+  if (!form.status) errors.status = "Status is required.";
+  if (address && !/^[A-Za-z0-9\u0600-\u06FF]+(?:[ ,./#-][A-Za-z0-9\u0600-\u06FF]+)*$/.test(address)) errors.address = "Use letters, numbers, spaces and common address separators only.";
+  if (phone && !/^\d{7,15}$/.test(phone)) errors.phone = "Use numbers only, 7 to 15 digits.";
+  return errors;
 }
 
 export default function AdminManagement({ resource }: { resource: Resource }) {
-  const config = configs[resource];
-  const Icon = config.icon;
-  const [rows, setRows] = useState<RecordData[]>([]);
-  const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState<RecordData | null>(null);
-  const [form, setForm] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const config = configs[resource]; const Icon = config.icon;
+  const [rows, setRows] = useState<RecordData[]>([]); const [search, setSearch] = useState(""); const [editing, setEditing] = useState<RecordData | null>(null);
+  const [form, setForm] = useState<Record<string, string>>({}); const [initialForm, setInitialForm] = useState<Record<string, string>>({});
+  const [roles, setRoles] = useState<Option[]>([]); const [branches, setBranches] = useState<Option[]>([]); const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [page, setPage] = useState(1); const pageSize = 10;
 
-  const load = async (query = search) => {
-    setLoading(true); setError("");
-    try {
-      const response = await fetch(`/api/admin/${resource}${query ? `?search=${encodeURIComponent(query)}` : ""}`, { headers: { Accept: "application/json" } });
-      const data = await readApiResponse(response);
-      if (!response.ok) throw new Error(apiError(data, `Failed to load ${config.title.toLowerCase()}.`));
-      setRows(Array.isArray(data) ? data as RecordData[] : (data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items) ? (data as { items: RecordData[] }).items : []));
-      setPage(1);
-    } catch (e) { setError(e instanceof Error ? e.message : "Failed to load admin data"); }
-    finally { setLoading(false); }
-  };
+  const load = async (query = search) => { setLoading(true); setError(""); try { const response = await fetch(`/api/admin/${resource}${query ? `?search=${encodeURIComponent(query)}` : ""}`, { headers: { Accept: "application/json" } }); const data = await readApiResponse(response); if (!response.ok) throw new Error(apiError(data, `Failed to load ${config.title.toLowerCase()}.`)); setRows(Array.isArray(data) ? data as RecordData[] : []); setPage(1); } catch (e) { setError(e instanceof Error ? e.message : "Failed to load admin data"); } finally { setLoading(false); } };
   useEffect(() => { void load(""); }, [resource]);
 
-  const openCreate = () => { setEditing({}); setForm({}); setError(""); };
-  const openEdit = (row: RecordData) => {
-    setEditing(row); setForm(Object.fromEntries(config.fields.map((f) => [f, row[f] === null || row[f] === undefined ? "" : String(row[f])] ))); setError("");
-  };
-  const save = async () => {
-    setSaving(true); setError("");
-    try {
-      const body: Record<string, unknown> = {};
-      for (const field of config.fields) {
-        if (form[field] === undefined || form[field] === "") continue;
-        body[field] = inputType(field) === "number" ? Number(form[field]) : form[field];
-      }
-      const response = await fetch(editing?.id ? `/api/admin/${resource}/${editing.id}` : `/api/admin/${resource}`, { method: editing?.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(body) });
-      const data = await readApiResponse(response);
-      if (!response.ok) throw new Error(apiError(data, "Save failed."));
-      setEditing(null); await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
-    finally { setSaving(false); }
-  };
-  const remove = async (id: number) => {
-    if (!window.confirm("Delete this record? This action cannot be undone.")) return;
-    try {
-      const response = await fetch(`/api/admin/${resource}/${id}`, { method: "DELETE", headers: { Accept: "application/json" } });
-      const data = await readApiResponse(response);
-      if (!response.ok) throw new Error(apiError(data, "Delete failed."));
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "Delete failed"); }
-  };
+  const loadUserOptions = async () => { try { const [rolesResponse, branchesResponse] = await Promise.all([fetch("/api/admin/roles", { headers: { Accept: "application/json" } }), fetch("/api/admin/branches", { headers: { Accept: "application/json" } })]); const rolesData = await readApiResponse(rolesResponse); const branchesData = await readApiResponse(branchesResponse); if (rolesResponse.ok) setRoles(Array.isArray(rolesData) ? rolesData.filter((r): r is Option => typeof r === "object" && r !== null && typeof (r as Option).id === "number" && String((r as Option).status ?? "ACTIVE") === "ACTIVE") : []); if (branchesResponse.ok) setBranches(Array.isArray(branchesData) ? branchesData.filter((b): b is Option => typeof b === "object" && b !== null && typeof (b as Option).id === "number" && String((b as Option).status ?? "ACTIVE") === "ACTIVE") : []); } catch { setRoles([]); setBranches([]); } };
+  const openCreate = () => { const next = resource === "users" ? { status: "ACTIVE" } : {}; setEditing({}); setForm(next); setInitialForm(next); setShowPassword(false); setError(""); if (resource === "users") void loadUserOptions(); };
+  const openEdit = (row: RecordData) => { const next = Object.fromEntries(config.fields.map((f) => [f, row[f] === null || row[f] === undefined ? "" : String(row[f])])); setEditing(row); setForm(next); setInitialForm(next); setShowPassword(false); setError(""); if (resource === "users") void loadUserOptions(); };
 
-  const columns = useMemo(() => config.fields.slice(0, resource === "permissions" ? 5 : 6), [config.fields, resource]);
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize);
-  const start = rows.length ? (page - 1) * pageSize + 1 : 0;
-  const end = Math.min(page * pageSize, rows.length);
+  const userErrors = resource === "users" && editing ? validateUser(form, !editing.id) : {};
+  const dirty = editing ? formSignature(form) !== formSignature(initialForm) : false;
+  const canSave = !!editing && dirty && !saving && (resource !== "users" || Object.keys(userErrors).length === 0);
+
+  const save = async () => { if (!editing || !canSave) return; setSaving(true); setError(""); try { const body: Record<string, unknown> = {}; if (resource === "users") { for (const field of ["name", "username", "role_id", "branch_id", "status", "address", "phone", "password"]) if (form[field] !== undefined && (field !== "password" || form[field] !== "")) body[field] = ["role_id", "branch_id"].includes(field) ? Number(form[field]) : form[field]; } else { for (const field of config.fields) if (form[field] !== undefined && form[field] !== "") body[field] = inputType(field) === "number" ? Number(form[field]) : form[field]; } const response = await fetch(editing.id ? `/api/admin/${resource}/${editing.id}` : `/api/admin/${resource}`, { method: editing.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(body) }); const data = await readApiResponse(response); if (!response.ok) throw new Error(apiError(data, "Save failed.")); setEditing(null); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); } finally { setSaving(false); } };
+  const remove = async (id: number) => { if (!window.confirm("Delete this record? This action cannot be undone.")) return; try { const response = await fetch(`/api/admin/${resource}/${id}`, { method: "DELETE", headers: { Accept: "application/json" } }); const data = await readApiResponse(response); if (!response.ok) throw new Error(apiError(data, "Delete failed.")); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Delete failed"); } };
+
+  const columns = useMemo(() => resource === "users" ? ["name", "username", "role_name", "branch_name", "status"] : config.fields.slice(0, resource === "permissions" ? 5 : 6), [config.fields, resource]);
+  const columnLabel = (column: string) => column === "role_name" ? "Role" : column === "branch_name" ? "Branch" : config.labels[column] ?? column;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize)); const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize); const start = rows.length ? (page - 1) * pageSize + 1 : 0; const end = Math.min(page * pageSize, rows.length);
 
   return <div className="p-4 sm:p-6 lg:p-8 max-w-[1500px] mx-auto w-full space-y-5">
-    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-      <div className="flex items-start gap-3 min-w-0">
-        <Link href="/admin"><Button variant="outline" size="icon" className="shrink-0 mt-0.5"><ArrowLeft className="w-4 h-4" /></Button></Link>
-        <div className="min-w-0"><div className="flex items-center gap-2"><div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><Icon className="w-5 h-5 text-primary" /></div><h2 className="text-xl sm:text-2xl font-bold tracking-tight">{config.title}</h2></div><p className="text-sm text-muted-foreground mt-2 max-w-2xl">{config.description}</p></div>
-      </div>
-      <Button onClick={openCreate} className="gap-2 shrink-0"><Plus className="w-4 h-4" />Add {config.title.replace(/s$/, "")}</Button>
-    </div>
-
-    <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none border-b">
-      {navigation.map((item) => <Link key={item.key} href={`/admin/${item.key}`}><button className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${resource === item.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{item.label}</button></Link>)}
-    </div>
-
+    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4"><div className="flex items-start gap-3 min-w-0"><Link href="/admin"><Button variant="outline" size="icon" className="shrink-0 mt-0.5"><ArrowLeft className="w-4 h-4" /></Button></Link><div className="min-w-0"><div className="flex items-center gap-2"><div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0"><Icon className="w-5 h-5 text-primary" /></div><h2 className="text-xl sm:text-2xl font-bold tracking-tight">{config.title}</h2></div><p className="text-sm text-muted-foreground mt-2 max-w-2xl">{config.description}</p></div></div><Button onClick={openCreate} className="gap-2 shrink-0"><Plus className="w-4 h-4" />Add {config.title.replace(/s$/, "")}</Button></div>
+    <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none border-b">{navigation.map((item) => <Link key={item.key} href={`/admin/${item.key}`}><button className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${resource === item.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{item.label}</button></Link>)}</div>
     <Card className="overflow-hidden"><CardContent className="p-3 sm:p-4"><div className="flex flex-col sm:flex-row gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" /><Input value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void load(); }} placeholder={`Search ${config.title.toLowerCase()}...`} className="pl-9 h-9" /></div><Button onClick={() => void load()} variant="outline" className="gap-2 h-9"><Search className="w-4 h-4" />Search</Button><Button onClick={() => { setSearch(""); void load(""); }} variant="ghost" className="gap-2 h-9"><SlidersHorizontal className="w-4 h-4" />Reset</Button></div></CardContent></Card>
-
     {error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive px-4 py-3 text-sm flex items-center justify-between gap-3"><span>{error}</span><button onClick={() => setError("")}><X className="w-4 h-4" /></button></div>}
+    <Card><CardHeader className="py-4 border-b"><div><CardTitle className="text-sm font-semibold">{config.title}</CardTitle><p className="text-xs text-muted-foreground mt-1">{rows.length} total record{rows.length === 1 ? "" : "s"}</p></div></CardHeader><CardContent className="p-0 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30">{columns.map((c) => <th key={c} className="text-left font-medium text-muted-foreground px-4 py-3 whitespace-nowrap">{columnLabel(c)}</th>)}<th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th></tr></thead><tbody>{loading ? <tr><td colSpan={columns.length + 1} className="p-12 text-center text-muted-foreground">Loading {config.title.toLowerCase()}…</td></tr> : visibleRows.length === 0 ? <tr><td colSpan={columns.length + 1} className="p-12 text-center"><div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3"><Icon className="w-5 h-5 text-muted-foreground" /></div><p className="font-medium">No {config.title.toLowerCase()} found</p><p className="text-xs text-muted-foreground mt-1">Try a different search or add a new record.</p></td></tr> : visibleRows.map((row) => <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">{columns.map((c) => <td key={c} className="px-4 py-3 whitespace-nowrap max-w-[280px] truncate">{c === "status" ? <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(row[c])}`}>{String(row[c]) === "INACTIVE" ? "Not Active" : display(row[c])}</span> : c === "price" || c === "quantity" || c === "minimum_quantity" ? <span className="font-mono">{display(row[c])}</span> : display(row[c])}</td>)}<td className="px-4 py-3"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => openEdit(row)} aria-label="Edit"><Pencil className="w-4 h-4" /></Button><Button variant="ghost" size="icon" onClick={() => void remove(Number(row.id))} aria-label="Delete"><Trash2 className="w-4 h-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></CardContent><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-t text-xs text-muted-foreground"><span>{start}–{end} of {rows.length}</span><div className="flex items-center gap-1"><Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft className="w-4 h-4" /></Button><span className="px-2">Page {page} of {totalPages}</span><Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}><ChevronRight className="w-4 h-4" /></Button></div></div></Card>
 
-    <Card><CardHeader className="py-4 border-b"><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-sm font-semibold">{config.title}</CardTitle><p className="text-xs text-muted-foreground mt-1">{rows.length} total record{rows.length === 1 ? "" : "s"}</p></div></div></CardHeader><CardContent className="p-0 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30">{columns.map((c) => <th key={c} className="text-left font-medium text-muted-foreground px-4 py-3 whitespace-nowrap">{config.labels[c as keyof typeof config.labels]}</th>)}<th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th></tr></thead><tbody>{loading ? <tr><td colSpan={columns.length + 1} className="p-12 text-center text-muted-foreground">Loading {config.title.toLowerCase()}…</td></tr> : visibleRows.length === 0 ? <tr><td colSpan={columns.length + 1} className="p-12 text-center"><div className="mx-auto h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3"><Icon className="w-5 h-5 text-muted-foreground" /></div><p className="font-medium">No {config.title.toLowerCase()} found</p><p className="text-xs text-muted-foreground mt-1">Try a different search or add a new record.</p></td></tr> : visibleRows.map((row) => <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">{columns.map((c) => <td key={c} className="px-4 py-3 whitespace-nowrap max-w-[280px] truncate">{c === "status" ? <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(row[c])}`}>{display(row[c])}</span> : c === "price" || c === "quantity" || c === "minimum_quantity" ? <span className="font-mono">{display(row[c])}</span> : display(row[c])}</td>)}<td className="px-4 py-3"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => openEdit(row)} aria-label="Edit"><Pencil className="w-4 h-4" /></Button><Button variant="ghost" size="icon" onClick={() => void remove(Number(row.id))} aria-label="Delete"><Trash2 className="w-4 h-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></CardContent><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 border-t text-xs text-muted-foreground"><span>{start}–{end} of {rows.length}</span><div className="flex items-center gap-1"><Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft className="w-4 h-4" /></Button><span className="px-2">Page {page} of {totalPages}</span><Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}><ChevronRight className="w-4 h-4" /></Button></div></div></Card>
-
-    {editing && <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"><Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"><CardHeader className="sticky top-0 z-10 bg-card border-b flex flex-row items-center justify-between"><div><CardTitle>{editing.id ? "Edit" : "Add"} {config.title.replace(/s$/, "")}</CardTitle><p className="text-xs text-muted-foreground mt-1">Keep the master data consistent across the studio.</p></div><Button variant="ghost" size="icon" onClick={() => setEditing(null)}><X className="w-4 h-4" /></Button></CardHeader><CardContent className="space-y-4 p-5">{config.fields.map((field) => <div key={field} className="space-y-1.5"><Label>{config.labels[field as keyof typeof config.labels]}</Label><Input type={inputType(field)} value={form[field] ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))} placeholder={String(config.labels[field as keyof typeof config.labels])} /></div>)}<div className="flex justify-end gap-2 pt-3 border-t"><Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={() => void save()} disabled={saving} className="gap-2"><Save className="w-4 h-4" />{saving ? "Saving…" : "Save changes"}</Button></div></CardContent></Card></div>}
+    {editing && <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"><Card className="w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl"><CardHeader className="sticky top-0 z-20 bg-card border-b flex flex-row items-center justify-between"><div><CardTitle>{editing.id ? "Edit" : "Add"} {config.title.replace(/s$/, "")}</CardTitle><p className="text-xs text-muted-foreground mt-1">{resource === "users" ? "Create a secure staff account and assign its access scope." : "Keep the master data consistent across the studio."}</p></div><Button variant="ghost" size="icon" onClick={() => setEditing(null)}><X className="w-4 h-4" /></Button></CardHeader><CardContent className="p-5 space-y-5">
+      {resource === "users" ? <>
+        <div><div className="text-sm font-semibold mb-3">Account details</div><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5 sm:col-span-2"><Label>Name <span className="text-destructive">*</span></Label><Input value={form.name ?? ""} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Ahmed Mohamed" aria-invalid={!!userErrors.name} />{userErrors.name && <p className="text-xs text-destructive">{userErrors.name}</p>}<p className="text-[11px] text-muted-foreground">At least two sections. Letters and numbers only.</p></div>
+          <div className="space-y-1.5"><Label>Username <span className="text-destructive">*</span></Label><Input value={form.username ?? ""} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} placeholder="Login username" autoComplete="username" aria-invalid={!!userErrors.username} />{userErrors.username && <p className="text-xs text-destructive">{userErrors.username}</p>}<p className="text-[11px] text-muted-foreground">Minimum 4 characters, letters and numbers only.</p></div>
+          <div className="space-y-1.5"><Label>Password {!editing.id && <span className="text-destructive">*</span>}{editing.id && <span className="text-[11px] text-muted-foreground font-normal"> (leave blank to keep current)</span>}</Label><div className="relative"><Input type={showPassword ? "text" : "password"} value={form.password ?? ""} onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))} placeholder={editing.id ? "New password" : "Minimum 4 characters"} autoComplete="new-password" className="pr-10" aria-invalid={!!userErrors.password} /><button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-foreground" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></div>{userErrors.password && <p className="text-xs text-destructive">{userErrors.password}</p>}<p className="text-[11px] text-muted-foreground">Minimum 4 characters.</p></div>
+        </div></div>
+        <div className="border-t pt-5"><div className="text-sm font-semibold mb-3">Access & assignment</div><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5"><Label>Role <span className="text-destructive">*</span></Label><select value={form.role_id ?? ""} onChange={(e) => setForm((p) => ({ ...p, role_id: e.target.value }))} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-invalid={!!userErrors.role_id}><option value="">Choose a role</option>{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select>{userErrors.role_id && <p className="text-xs text-destructive">{userErrors.role_id}</p>}</div>
+          <div className="space-y-1.5"><Label>Assign Branch <span className="text-destructive">*</span></Label><select value={form.branch_id ?? ""} onChange={(e) => setForm((p) => ({ ...p, branch_id: e.target.value }))} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-invalid={!!userErrors.branch_id}><option value="">Choose a branch</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>{userErrors.branch_id && <p className="text-xs text-destructive">{userErrors.branch_id}</p>}</div>
+          <div className="space-y-1.5"><Label>Status <span className="text-destructive">*</span></Label><select value={form.status ?? ""} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-invalid={!!userErrors.status}><option value="">Choose status</option><option value="ACTIVE">Active</option><option value="INACTIVE">Not Active</option></select>{userErrors.status && <p className="text-xs text-destructive">{userErrors.status}</p>}</div>
+        </div></div>
+        <div className="border-t pt-5"><div className="text-sm font-semibold mb-3">Contact details <span className="text-[11px] text-muted-foreground font-normal">(optional)</span></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5 sm:col-span-2"><Label>Address</Label><Input value={form.address ?? ""} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} placeholder="Optional address" aria-invalid={!!userErrors.address} />{userErrors.address && <p className="text-xs text-destructive">{userErrors.address}</p>}</div>
+          <div className="space-y-1.5"><Label>Phone</Label><Input type="tel" inputMode="numeric" value={form.phone ?? ""} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} placeholder="Optional phone number" aria-invalid={!!userErrors.phone} />{userErrors.phone && <p className="text-xs text-destructive">{userErrors.phone}</p>}<p className="text-[11px] text-muted-foreground">Numbers only, 7–15 digits.</p></div>
+        </div></div>
+        {(!roles.length || !branches.length) && <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>Roles and branches must be configured before creating a user.</span></div>}
+      </> : config.fields.map((field) => <div key={field} className="space-y-1.5"><Label>{config.labels[field]}</Label><Input type={inputType(field)} value={form[field] ?? ""} onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))} placeholder={config.labels[field]} /></div>)}
+      <div className="flex justify-between items-center gap-3 pt-4 border-t"><p className="text-[11px] text-muted-foreground">{resource === "users" && !editing.id ? "Fields marked * are required." : dirty ? "Unsaved changes" : "No changes to save"}</p><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={() => void save()} disabled={!canSave} className="gap-2"><Save className="w-4 h-4" />{saving ? "Saving…" : "Save changes"}</Button></div></div>
+    </CardContent></Card></div>}
   </div>;
 }
