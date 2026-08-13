@@ -2,7 +2,17 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm --filter @workspace/api-server build && pnpm --filter @workspace/studio-management build",
   "outputDirectory": "artifacts/studio-management/dist/public",
+  "functions": {
+    "api/[...path].ts": {
+      "includeFiles": ["artifacts/api-server/dist/**"],
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/[...path]"
+    },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
