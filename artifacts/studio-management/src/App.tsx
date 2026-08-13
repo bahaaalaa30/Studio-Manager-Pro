@@ -100,7 +100,14 @@ function AuthGate() {
           : Array.isArray(data?.permissions)
             ? data.permissions
             : [];
-        const nextPermissions = new Set<string>(rawPermissions.filter((value: unknown): value is string => typeof value === 'string'));
+        const nextPermissions = new Set<string>();
+        for (const permission of rawPermissions) {
+          if (typeof permission === 'string') {
+            nextPermissions.add(permission);
+          } else if (permission && typeof permission === 'object' && typeof permission.key === 'string') {
+            nextPermissions.add(permission.key);
+          }
+        }
         if (!cancelled) {
           setPermissions(nextPermissions);
           setAuthState('authenticated');
