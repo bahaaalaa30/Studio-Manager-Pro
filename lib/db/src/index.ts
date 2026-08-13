@@ -39,6 +39,7 @@ export function ensureDatabaseSchema(): Promise<void> {
           password_hash TEXT, password_set_at TIMESTAMPTZ, last_login_at TIMESTAMPTZ, must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
           failed_login_attempts INTEGER NOT NULL DEFAULT 0, locked_until TIMESTAMPTZ,
           role_id INTEGER REFERENCES smp_roles(id) ON DELETE SET NULL, branch_id INTEGER, status TEXT NOT NULL DEFAULT 'ACTIVE',
+          address TEXT, phone TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
         CREATE TABLE IF NOT EXISTS smp_branches (id SERIAL PRIMARY KEY, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE,
           address TEXT, phone TEXT, manager_user_id INTEGER, status TEXT NOT NULL DEFAULT 'ACTIVE',
@@ -57,6 +58,8 @@ export function ensureDatabaseSchema(): Promise<void> {
         ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS address TEXT;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS phone TEXT;
         CREATE TABLE IF NOT EXISTS smp_role_permissions (role_id INTEGER NOT NULL REFERENCES smp_roles(id) ON DELETE CASCADE,
           permission_id INTEGER NOT NULL REFERENCES smp_permissions(id) ON DELETE CASCADE, PRIMARY KEY (role_id, permission_id));
         CREATE TABLE IF NOT EXISTS smp_user_permissions (
