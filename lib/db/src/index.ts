@@ -50,15 +50,13 @@ export function ensureDatabaseSchema(): Promise<void> {
           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'smp_branches_manager_fk') THEN
             ALTER TABLE smp_branches ADD CONSTRAINT smp_branches_manager_fk FOREIGN KEY (manager_user_id) REFERENCES smp_users(id) ON DELETE SET NULL;
           END IF;
-          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'smp_users_password_columns') THEN
-            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS password_hash TEXT;
-            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMPTZ;
-            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
-            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
-            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
-            ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
-          END IF;
         END $$;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS password_set_at TIMESTAMPTZ;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE smp_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
         CREATE TABLE IF NOT EXISTS smp_role_permissions (role_id INTEGER NOT NULL REFERENCES smp_roles(id) ON DELETE CASCADE,
           permission_id INTEGER NOT NULL REFERENCES smp_permissions(id) ON DELETE CASCADE, PRIMARY KEY (role_id, permission_id));
         CREATE TABLE IF NOT EXISTS smp_user_permissions (
@@ -83,7 +81,30 @@ export function ensureDatabaseSchema(): Promise<void> {
           ('admin.access','Access Administration','Admin','access'),('users.view','View Users','Users','view'),('users.create','Create Users','Users','create'),
           ('users.edit','Edit Users','Users','edit'),('users.delete','Delete Users','Users','delete'),('branches.manage','Manage Branches','Branches','manage'),
           ('roles.manage','Manage Roles','Roles','manage'),('permissions.manage','Manage Permissions','Permissions','manage'),
-          ('services.manage','Manage Services','Services','manage'),('packages.manage','Manage Packages','Packages','manage'),('inventory.manage','Manage Inventory','Inventory','manage') ON CONFLICT (key) DO NOTHING;`);
+          ('services.manage','Manage Services','Services','manage'),('packages.manage','Manage Packages','Packages','manage'),
+          ('inventory.view','View Inventory','Inventory','view'),('inventory.manage','Manage Inventory','Inventory','manage'),
+          ('orders.view','View Orders','Orders','view'),('orders.create','Create Orders','Orders','create'),('orders.edit','Edit Orders','Orders','edit'),
+          ('orders.delete','Delete Orders','Orders','delete'),('orders.payment','Manage Order Payments','Orders','payment'),
+          ('analytics.view','View Analytics','Analytics','view') ON CONFLICT (key) DO NOTHING;
+        INSERT INTO smp_role_permissions (role_id, permission_id)
+          SELECT r.id, p.id FROM smp_roles r CROSS JOIN smp_permissions p WHERE r.name = 'Admin'
+          ON CONFLICT DO NOTHING;
+        INSERT INTO smp_role_permissions (role_id, permission_id)
+          SELECT r.id, p.id FROM smp_roles r JOIN smp_permissions p ON p.key IN
+          ('orders.view','orders.create','orders.edit','orders.payment','inventory.view','analytics.view','branches.manage')
+          WHERE r.name = 'Branch Manager' ON CONFLICT DO NOTHING;
+        INSERT INTO smp_role_permissions (role_id, permission_id)
+          SELECT r.id, p.id FROM smp_roles r JOIN smp_permissions p ON p.key IN
+          ('orders.view','orders.create','orders.edit','orders.payment') WHERE r.name = 'Reception' ON CONFLICT DO NOTHING;
+        INSERT INTO smp_role_permissions (role_id, permission_id)
+          SELECT r.id, p.id FROM smp_roles r JOIN smp_permissions p ON p.key IN ('orders.view','orders.edit') WHERE r.name = 'Photographer' ON CONFLICT DO NOTHING;
+        INSERT INTO smp_role_permissions (role_id, permission_id)
+          SELECT r.id, p.id FROM smp_roles r JOIN smp_permissions p ON p.key IN ('orders.view','orders.edit') WHERE r.name = 'Designer' ON CONFLICT DO NOTHING;
+        INSERT INTO smp_role_permissions (role_id, permission_id)
+          SELECT r.id, p.id FROM smp_roles r JOIN smp_permissions p ON p.key IN ('orders.view','orders.edit') WHERE r.name = 'Delivery' ON CONFLICT DO NOTHING;
+        INSERT INTO smp_role_permissions (role_id, permission_id)
+          SELECT r.id, p.id FROM smp_roles r JOIN smp_permissions p ON p.key IN ('inventory.view','inventory.manage') WHERE r.name = 'Inventory Manager' ON CONFLICT DO NOTHING;
+      `);
     })().catch((error) => { schemaReady = null; throw error; });
   }
   return schemaReady;
