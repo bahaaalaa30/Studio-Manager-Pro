@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ArrowRight, Boxes, BriefcaseBusiness, Building2, KeyRound, PackageCheck, ShieldCheck, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import "@/styles/admin-management.css";
 
 type Permission = { key?: string; module?: string; action?: string };
 type PermissionSet = Set<string>;
