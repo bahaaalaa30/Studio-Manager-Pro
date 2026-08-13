@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useLocation } from "wouter";
 import { ArrowRight, Camera, Eye, EyeOff, LockKeyhole, LogIn, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,20 +19,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/me", { headers: { Accept: "application/json" } })
-      .then((response) => {
-        if (!cancelled && response.ok) navigate("/reception");
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setCheckingSession(false);
-      });
-    return () => { cancelled = true; };
-  }, [navigate]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -58,6 +44,7 @@ export default function Login() {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         credentials: "same-origin",
+        cache: "no-store",
         body: JSON.stringify({ username: cleanUsername, password }),
       });
       const text = await response.text();
@@ -67,17 +54,13 @@ export default function Login() {
         if (response.status === 423) throw new Error("Your account is temporarily locked. Please try again later.");
         throw new Error(readError(data, "Invalid username or password."));
       }
-      navigate("/reception");
+      navigate("/reception", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
-  if (checkingSession) {
-    return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
-  }
 
   return (
     <div className="min-h-[100dvh] bg-[#07111f] text-slate-950 flex overflow-hidden">
