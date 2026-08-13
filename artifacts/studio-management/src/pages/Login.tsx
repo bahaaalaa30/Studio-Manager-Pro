@@ -54,6 +54,12 @@ export default function Login() {
         if (response.status === 423) throw new Error("Your account is temporarily locked. Please try again later.");
         throw new Error(readError(data, "Invalid username or password."));
       }
+
+      // The AuthGate owns the session state. Notify it directly instead of
+      // navigating into a new protected-router instance that immediately
+      // starts another /auth/me check.
+      window.dispatchEvent(new Event("smp-authenticated"));
+      setPassword("");
       navigate("/reception", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
