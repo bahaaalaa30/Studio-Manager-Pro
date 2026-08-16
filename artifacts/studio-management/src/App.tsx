@@ -12,7 +12,7 @@ import Printing from '@/pages/Printing';
 import Delivery from '@/pages/Delivery';
 import Admin from '@/pages/Admin';
 import AdminManagement from '@/pages/AdminManagement';
-import Archive from '@/pages/ArchiveSearch';
+import Archive from '@/pages/ArchiveSearchV2';
 import Track from '@/pages/Track';
 import Login from '@/pages/Login';
 import SettingsHome from '@/pages/SettingsHome';
