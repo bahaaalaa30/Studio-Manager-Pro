@@ -1,6 +1,3 @@
-/* Settings is the single entry point for administration resources.
- * Resource pages intentionally do not expose cross-resource tabs.
+/* Resource pages intentionally do not expose cross-resource tabs.
+ * No global visibility overrides are used here.
  */
-[class*="max-w-[1500px]"] > div:nth-child(2) {
-  display: none !important;
-}
