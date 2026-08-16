@@ -19,7 +19,7 @@ export default function ArchiveSearchV2() {
   const [criteria,setCriteria] = useState<Criteria>(EMPTY);
   const [submitted,setSubmitted] = useState<Criteria|null>(null);
   const [page,setPage] = useState(1);
-  const hasCriteria = Object.values(criteria).some(Boolean);
+  const hasCriteria = Object.values(criteria).some((v) => v.trim() !== "");
   const params = useMemo(() => {
     if (!submitted) return {};
     return Object.fromEntries(Object.entries(submitted).filter(([,v]) => v.trim()).map(([k,v]) => [k,v.trim()]));
@@ -33,10 +33,18 @@ export default function ArchiveSearchV2() {
   const search=()=>{if(hasCriteria){setSubmitted({...criteria});setPage(1)}};
   const clear=()=>{setCriteria(EMPTY);setSubmitted(null);setPage(1);queryClient.removeQueries({queryKey:["/api/orders"]})};
   const refresh=()=>{if(submitted) void queryClient.invalidateQueries({queryKey:getListOrdersQueryKey(params as any)})};
+
   return <div className="p-4 sm:p-6 lg:p-8 max-w-[1500px] mx-auto w-full space-y-6">
-    <div className="flex items-center justify-between gap-3"><div><h2 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2"><ArchiveIcon className="w-6 h-6 text-primary"/>Archive</h2><p className="text-sm text-muted-foreground mt-1">Search and retrieve historical orders.</p></div>{submitted&&<Button variant="outline" size="sm" onClick={refresh} className="gap-2"><RefreshCw className="w-4 h-4"/>Refresh Results</Button>}</div>
-    <Card className="border-primary/30 shadow-sm">
-      <CardHeader className="pb-3"><CardTitle className="text-base sm:text-lg">Search Criteria</CardTitle><p className="text-xs sm:text-sm text-muted-foreground">Enter one or more criteria, then click Search. No archived orders are loaded until Search is pressed.</p></CardHeader>
+    <div className="flex items-center justify-between gap-3">
+      <div><h2 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2"><ArchiveIcon className="w-6 h-6 text-primary"/>Archive</h2><p className="text-sm text-muted-foreground mt-1">Search and retrieve historical orders.</p></div>
+      {submitted&&<Button variant="outline" size="sm" onClick={refresh} className="gap-2"><RefreshCw className="w-4 h-4"/>Refresh Results</Button>}
+    </div>
+
+    <Card data-testid="archive-search-criteria" className="border-primary/30 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base sm:text-lg flex items-center gap-2"><Search className="w-5 h-5 text-primary"/>Search Criteria</CardTitle>
+        <p className="text-xs sm:text-sm text-muted-foreground">Enter one or more criteria, then click Search. No archived orders are loaded until Search is pressed.</p>
+      </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div><label className="text-sm font-medium mb-1.5 block">Order Number</label><Input value={criteria.orderNumber} onChange={e=>set("orderNumber",e.target.value)} placeholder="Order number" /></div>
@@ -51,6 +59,7 @@ export default function ArchiveSearchV2() {
         <div className="flex flex-col sm:flex-row justify-end gap-2 border-t pt-4"><Button variant="outline" onClick={clear} className="gap-2"><X className="w-4 h-4"/>Clear</Button><Button onClick={search} disabled={!hasCriteria||isLoading} className="gap-2"><Search className="w-4 h-4"/>Search</Button></div>
       </CardContent>
     </Card>
+
     {!submitted ? <Card><CardContent className="py-16 text-center"><Search className="w-10 h-10 mx-auto mb-3 text-muted-foreground/50"/><h3 className="font-semibold">Search the archive</h3><p className="text-sm text-muted-foreground mt-1">Enter your search criteria above to retrieve archived orders.</p></CardContent></Card> : <Card><CardHeader className="pb-3"><CardTitle className="text-base">Archived Orders <span className="text-xs font-normal text-muted-foreground">{isLoading?"Searching…":`${sorted.length} found`}</span></CardTitle></CardHeader><CardContent className="p-0 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30 text-left">{["Order #","Customer","Total","Paid","Remaining","Status","Payment","Date"].map(h=><th key={h} className="px-4 py-3 text-xs font-semibold text-muted-foreground whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{isLoading&&<tr><td colSpan={8} className="p-12 text-center text-muted-foreground">Searching archived orders…</td></tr>}{!isLoading&&!pageOrders.length&&<tr><td colSpan={8} className="p-12 text-center text-muted-foreground">No orders match the selected criteria.</td></tr>}{pageOrders.map(o=>{const remaining=parseFloat(String(o.remainingAmount));return <tr key={o.id} className="border-b hover:bg-muted/30"><td className="px-4 py-3 font-mono text-xs text-primary">{o.orderNumber}</td><td className="px-4 py-3"><div className="font-medium">{o.customerName||"—"}</div><div className="text-xs text-muted-foreground">{o.customerMobile}</div></td><td className="px-4 py-3">{formatCurrency(o.totalAmount)}</td><td className="px-4 py-3 text-emerald-600">{formatCurrency(o.paidAmount)}</td><td className="px-4 py-3">{formatCurrency(remaining)}</td><td className="px-4 py-3">{o.status}</td><td className="px-4 py-3 text-xs">{PAYMENTS[o.paymentMethod]||o.paymentMethod}</td><td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(o.createdAt).toLocaleString()}</td></tr>})}</tbody></table>{totalPages>1&&<div className="flex items-center justify-between p-3 border-t"><span className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</span><div className="flex gap-2"><Button variant="outline" size="icon" disabled={currentPage<=1} onClick={()=>setPage(p=>p-1)}><ChevronLeft className="w-4 h-4"/></Button><Button variant="outline" size="icon" disabled={currentPage>=totalPages} onClick={()=>setPage(p=>p+1)}><ChevronRight className="w-4 h-4"/></Button></div></div>}</CardContent></Card>}
   </div>;
 }
