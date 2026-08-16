@@ -12,7 +12,7 @@ import Printing from '@/pages/Printing';
 import Delivery from '@/pages/Delivery';
 import Admin from '@/pages/Admin';
 import AdminManagement from '@/pages/AdminManagement';
-import Archive from '@/pages/Archive';
+import Archive from '@/pages/ArchiveSearch';
 import Track from '@/pages/Track';
 import Login from '@/pages/Login';
 import SettingsHome from '@/pages/SettingsHome';
@@ -23,7 +23,6 @@ type AuthState = 'checking' | 'authenticated' | 'unauthenticated';
 const AUTH_EVENT = 'smp-authenticated';
 const LOGOUT_EVENT = 'smp-logout';
 type PermissionSet = Set<string>;
-
 const ROUTE_PERMISSIONS: Record<string, string> = {
   '/reception': 'reception.view', '/photography': 'photography.view', '/editing': 'editing.view', '/printing': 'printing.view',
   '/delivery': 'delivery.view', '/analytics': 'analytics.view', '/archive': 'archive.view', '/track': 'track.view',
@@ -31,27 +30,19 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/admin/users': 'users.view', '/admin/branches': 'branches.manage', '/admin/roles': 'roles.manage', '/admin/permissions': 'permissions.manage',
   '/admin/services': 'services.manage', '/admin/packages': 'packages.manage', '/admin/inventory': 'inventory.view',
 };
-
 const ADMIN_ROUTES = ['/admin/users', '/admin/branches', '/admin/roles', '/admin/permissions', '/admin/services', '/admin/packages', '/admin/inventory'];
-
 function getSafeRoute(permissions: PermissionSet) {
   const preferredRoutes = ['/reception', '/archive', '/track', '/photography', '/editing', '/printing', '/delivery', '/analytics', ...ADMIN_ROUTES];
   return preferredRoutes.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/login';
 }
-
-function getSafeAdminRoute(permissions: PermissionSet) {
-  return ADMIN_ROUTES.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/settings';
-}
-
+function getSafeAdminRoute(permissions: PermissionSet) { return ADMIN_ROUTES.find((route) => permissions.has(ROUTE_PERMISSIONS[route])) ?? '/settings'; }
 function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
   const [location] = useLocation();
   const requiredPermission = ROUTE_PERMISSIONS[location];
-
   if (requiredPermission && !permissions.has(requiredPermission)) {
     const safeRoute = location === '/settings' || location === '/admin' ? getSafeAdminRoute(permissions) : getSafeRoute(permissions);
     return safeRoute === '/login' ? <Redirect to="/login" /> : <Redirect to={safeRoute} />;
   }
-
   return <Layout><Switch>
     <Route path="/"><Redirect to={getSafeRoute(permissions)} /></Route>
     <Route path="/reception" component={Reception} /><Route path="/photography" component={Photography} />
@@ -65,7 +56,6 @@ function ProtectedRoutes({ permissions }: { permissions: PermissionSet }) {
     <Route path="/archive" component={Archive} /><Route path="/track" component={Track} /><Route component={NotFound} />
   </Switch></Layout>;
 }
-
 function buildPermissionSet(rawPermissions: unknown): PermissionSet {
   const nextPermissions = new Set<string>();
   if (!Array.isArray(rawPermissions)) return nextPermissions;
@@ -78,12 +68,10 @@ function buildPermissionSet(rawPermissions: unknown): PermissionSet {
   }
   return nextPermissions;
 }
-
 function AuthGate() {
   const [location, navigate] = useLocation();
   const [authState, setAuthState] = useState<AuthState>(() => location === '/login' ? 'unauthenticated' : 'checking');
   const [permissions, setPermissions] = useState<PermissionSet>(new Set());
-
   useEffect(() => {
     if (location === '/login') return;
     let cancelled = false;
@@ -100,19 +88,16 @@ function AuthGate() {
     void checkSession();
     return () => { cancelled = true; };
   }, [location]);
-
   useEffect(() => {
     const handleAuthenticated = () => { setAuthState('checking'); setPermissions(new Set()); navigate('/reception', { replace: true }); };
     const handleLogout = () => { setPermissions(new Set()); setAuthState('unauthenticated'); navigate('/login', { replace: true }); };
     window.addEventListener(AUTH_EVENT, handleAuthenticated); window.addEventListener(LOGOUT_EVENT, handleLogout);
     return () => { window.removeEventListener(AUTH_EVENT, handleAuthenticated); window.removeEventListener(LOGOUT_EVENT, handleLogout); };
   }, [navigate]);
-
   useEffect(() => {
     if (authState === 'unauthenticated' && location !== '/login') navigate('/login', { replace: true });
     if (authState === 'authenticated' && location === '/login') navigate(getSafeRoute(permissions), { replace: true });
   }, [authState, location, navigate, permissions]);
-
   if (location === '/login') {
     if (authState === 'authenticated') return <div className="min-h-[100dvh] bg-[#07111f] flex items-center justify-center"><div className="h-8 w-8 rounded-full border-2 border-white/20 border-t-[#FF6B00] animate-spin" /></div>;
     return <Login />;
@@ -121,7 +106,6 @@ function AuthGate() {
   if (authState === 'unauthenticated') return null;
   return <ProtectedRoutes permissions={permissions} />;
 }
-
 function CopyTrackingLinkHandler() {
   const [copiedTooltip, setCopiedTooltip] = useState<CopiedTooltip | null>(null);
   useEffect(() => {
@@ -140,6 +124,5 @@ function CopyTrackingLinkHandler() {
   }, []);
   return copiedTooltip ? <div role="status" aria-live="polite" className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg" style={{ left: copiedTooltip.x, top: copiedTooltip.y - 8 }}>Copied!<span className="absolute left-1/2 top-full -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-slate-900" /></div> : null;
 }
-
 function App() { return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter><AuthGate /><CopyTrackingLinkHandler /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>; }
 export default App;
