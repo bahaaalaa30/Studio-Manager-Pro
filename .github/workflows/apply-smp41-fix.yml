@@ -1,24 +1,19 @@
 name: Apply SMP-41 validation fix
 
 on:
-  push:
-    branches:
-      - bugfix/SMP-41-validation-errors
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   apply-fix:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Apply validation fix
         run: python3 scripts/fix_smp41_validation.py
-
       - name: Commit fix
         run: |
           git config user.name "github-actions[bot]"
