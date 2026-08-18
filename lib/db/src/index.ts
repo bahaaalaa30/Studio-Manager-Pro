@@ -48,8 +48,15 @@ export function ensureDatabaseSchema(): Promise<void> {
           permission_id INTEGER NOT NULL REFERENCES smp_permissions(id) ON DELETE CASCADE, granted BOOLEAN NOT NULL DEFAULT TRUE,
           PRIMARY KEY (user_id, permission_id));
         CREATE TABLE IF NOT EXISTS smp_services (id SERIAL PRIMARY KEY, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE, price NUMERIC(10,2) NOT NULL DEFAULT 0, description TEXT, status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+        ALTER TABLE smp_services ADD COLUMN IF NOT EXISTS is_free BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE smp_services ADD COLUMN IF NOT EXISTS urgent_allowed BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE smp_services ADD COLUMN IF NOT EXISTS urgent_price NUMERIC(10,2);
+        ALTER TABLE smp_services ADD COLUMN IF NOT EXISTS normal_delivery_days INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE smp_services ADD COLUMN IF NOT EXISTS urgent_delivery_days INTEGER;
         CREATE TABLE IF NOT EXISTS smp_packages (id SERIAL PRIMARY KEY, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE, price NUMERIC(10,2) NOT NULL DEFAULT 0, description TEXT, status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
         CREATE TABLE IF NOT EXISTS smp_inventory_items (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sku TEXT NOT NULL UNIQUE, category TEXT, unit TEXT NOT NULL DEFAULT 'piece', quantity NUMERIC(12,2) NOT NULL DEFAULT 0, minimum_quantity NUMERIC(12,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
+      await db.execute(sql`UPDATE smp_services SET is_free = TRUE, price = 0, urgent_price = NULL, urgent_allowed = FALSE, urgent_delivery_days = NULL WHERE price = 0 AND is_free = FALSE`);
+      await db.execute(sql`UPDATE smp_services SET urgent_allowed = FALSE, urgent_price = NULL, urgent_delivery_days = NULL WHERE urgent_allowed IS FALSE`);
       await db.execute(sql`
         INSERT INTO smp_roles (name, description) VALUES
           ('Admin','Full system access'),('Branch Manager','Manage assigned branch'),('Reception','Orders, payments and archive'),
