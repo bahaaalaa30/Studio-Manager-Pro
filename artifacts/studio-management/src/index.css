@@ -45,7 +45,6 @@
   --color-sidebar-primary-border: var(--sidebar-primary-border);
   --color-sidebar-accent: hsl(var(--sidebar-accent));
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
   --font-sans: var(--app-font-sans);
   --font-serif: var(--app-font-serif);
@@ -213,7 +212,7 @@
   .print-receipt > div > div:first-child { margin: 0 !important; }
   .print-receipt > div > div:first-child > div:first-child { padding: 0 0 4mm !important; border-bottom: 1px dashed #000 !important; background: transparent !important; }
   .print-receipt > div > div:first-child > div:first-child > div:first-child { display: none !important; }
-  .print-receipt > div > div:first-child > div:first-child::before { content: 'STUDIO HUB\\AORDER RECEIPT'; white-space: pre; display: block; text-align: center; font-weight: 700; font-size: 13pt; line-height: 1.35; margin-bottom: 3mm; letter-spacing: 0.5px; }
+  .print-receipt > div > div:first-child > div:first-child::before { content: 'Studio Hub\AOrder Receipt'; white-space: pre; display: block; text-align: center; font-weight: 700; font-size: 13pt; line-height: 1.35; margin-bottom: 3mm; letter-spacing: 0.5px; }
   .print-receipt h3 { margin: 0 0 1mm !important; font-size: 12pt !important; line-height: 1.25 !important; letter-spacing: 0 !important; word-break: break-all !important; }
   .print-receipt p { margin: 0 0 1mm !important; font-size: 8pt !important; }
   .print-receipt .grid { grid-template-columns: 1fr 1fr !important; gap: 3mm 5mm !important; margin: 0 !important; }
