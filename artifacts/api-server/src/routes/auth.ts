@@ -37,8 +37,8 @@ const parseCookies = (header?: string) => Object.fromEntries((header ?? "").spli
 export async function getAuthenticatedUser(req: { headers: { cookie?: string } }) {
   const userId = readSession(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
   if (!userId) return null;
-  const result = await db.execute(sql.raw(`SELECT u.id, u.name, u.username, u.role_id, u.branch_id, u.status, u.must_change_password, r.name AS role_name
-    FROM smp_users u LEFT JOIN smp_roles r ON r.id = u.role_id WHERE u.id = ${userId} AND u.status = 'ACTIVE' LIMIT 1`));
+  const result = await db.execute(sql.raw(`SELECT u.id, u.name, u.username, u.role_id, u.branch_id, b.name AS branch_name, u.status, u.must_change_password, r.name AS role_name
+    FROM smp_users u LEFT JOIN smp_roles r ON r.id = u.role_id LEFT JOIN smp_branches b ON b.id = u.branch_id WHERE u.id = ${userId} AND u.status = 'ACTIVE' LIMIT 1`));
   return result.rows[0] ?? null;
 }
 
