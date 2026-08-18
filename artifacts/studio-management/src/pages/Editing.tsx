@@ -46,6 +46,7 @@ export default function Editing() {
               <OrderCard
                 key={order.id}
                 order={order}
+                hidePrices
                 actions={
                   <Button size="sm" className="w-full"
                     onClick={() => handleStatusChange(order.id, "EDITING")}
@@ -73,6 +74,7 @@ export default function Editing() {
               <OrderCard
                 key={order.id}
                 order={order}
+                hidePrices
                 actions={
                   <Button size="sm" className="w-full bg-green-600 hover:bg-green-700 text-white"
                     onClick={() => handleStatusChange(order.id, "WAITING_PRINT")}
