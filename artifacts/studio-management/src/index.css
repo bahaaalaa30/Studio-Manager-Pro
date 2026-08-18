@@ -208,8 +208,28 @@
     line-height: 1.35 !important;
   }
   .print-receipt * { color: #000 !important; background: transparent !important; box-shadow: none !important; }
-  .print-receipt h1, .print-receipt h2, .print-receipt h3 { margin: 0 0 2mm !important; font-family: 'Spline Sans Mono', monospace !important; }
-  .print-receipt p { margin: 0 0 1.5mm !important; }
+  .print-receipt > div { width: 100% !important; max-width: 100% !important; }
+  .print-receipt > div > div { border: 0 !important; border-radius: 0 !important; width: 100% !important; max-width: 100% !important; }
+  .print-receipt > div > div:first-child { margin: 0 !important; }
+  .print-receipt > div > div:first-child > div:first-child { padding: 0 0 4mm !important; border-bottom: 1px dashed #000 !important; background: transparent !important; }
+  .print-receipt > div > div:first-child > div:first-child > div:first-child { display: none !important; }
+  .print-receipt > div > div:first-child > div:first-child::before { content: 'STUDIO HUB\\AORDER RECEIPT'; white-space: pre; display: block; text-align: center; font-weight: 700; font-size: 13pt; line-height: 1.35; margin-bottom: 3mm; letter-spacing: 0.5px; }
+  .print-receipt h3 { margin: 0 0 1mm !important; font-size: 12pt !important; line-height: 1.25 !important; letter-spacing: 0 !important; word-break: break-all !important; }
+  .print-receipt p { margin: 0 0 1mm !important; font-size: 8pt !important; }
+  .print-receipt .grid { grid-template-columns: 1fr 1fr !important; gap: 3mm 5mm !important; margin: 0 !important; }
+  .print-receipt .grid > div { min-width: 0 !important; }
+  .print-receipt .grid > div span:first-child { font-size: 7pt !important; text-transform: uppercase !important; letter-spacing: 0.3px !important; }
+  .print-receipt .grid > div span:last-child { display: block !important; font-size: 8.5pt !important; overflow-wrap: anywhere !important; }
+  .print-receipt .grid .col-span-2 { grid-column: 1 / -1 !important; }
+  .print-receipt .border-t.border-b { margin: 3mm 0 !important; padding: 3mm 0 !important; border-top: 1px dashed #000 !important; border-bottom: 1px dashed #000 !important; }
+  .print-receipt .border-t.border-b .flex.justify-between { gap: 4mm !important; }
+  .print-receipt .flex.justify-between { display: flex !important; align-items: baseline !important; gap: 4mm !important; width: 100% !important; }
+  .print-receipt .flex.justify-between > span:first-child { flex: 1 1 auto !important; min-width: 0 !important; overflow-wrap: anywhere !important; }
+  .print-receipt .flex.justify-between > span:last-child { flex: 0 0 auto !important; margin-left: auto !important; white-space: nowrap !important; text-align: right !important; }
+  .print-receipt .space-y-1 { margin-top: 0 !important; }
+  .print-receipt .space-y-1 .border-t { padding-top: 2mm !important; margin-top: 2mm !important; border-top: 1px dashed #000 !important; }
+  .print-receipt .space-y-1 .font-bold { font-size: 10.5pt !important; }
+  .print-receipt .space-y-1 .font-bold > span:last-child { font-size: 10.5pt !important; }
   .print-receipt button, .print-receipt .no-print, .no-print { display: none !important; }
   .print-receipt hr { margin: 2mm 0 !important; border: 0 !important; border-top: 1px dashed #000 !important; }
   .print-receipt table { width: 100% !important; border-collapse: collapse !important; }
