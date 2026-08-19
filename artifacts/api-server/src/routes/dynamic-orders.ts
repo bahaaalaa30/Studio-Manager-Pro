@@ -1,34 +1,49 @@
 import { Router } from "express";
 import { db, ordersTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { z } from "zod";
 
 const router = Router();
 const quote = (value: unknown) => value === null || value === undefined ? "NULL" : typeof value === "number" ? String(value) : typeof value === "boolean" ? (value ? "TRUE" : "FALSE") : `'${String(value).replace(/'/g, "''")}'`;
 
-const DynamicOrderBody = z.object({
-  customerName: z.string().optional(),
-  customerMobile: z.string().min(1),
-  customerType: z.literal("walk-in").default("walk-in"),
-  services: z.array(z.object({
-    serviceType: z.string().min(1),
-    quantity: z.number().int().min(1),
-    unitPrice: z.number().optional(),
-    totalPrice: z.number().optional(),
-    urgent: z.boolean().optional().default(false),
-  })).min(1),
-  paidAmount: z.number().min(0),
-  paymentMethod: z.enum(["cash", "visa", "instapay", "vodafone_cash"]),
-  expectedDeliveryTime: z.string().optional(),
-  notes: z.string().optional(),
-});
+type DynamicOrderBody = {
+  customerName?: string;
+  customerMobile: string;
+  customerType: "walk-in";
+  services: Array<{ serviceType: string; quantity: number; unitPrice?: number; totalPrice?: number; urgent?: boolean }>;
+  paidAmount: number;
+  paymentMethod: "cash" | "visa" | "instapay" | "vodafone_cash";
+  expectedDeliveryTime?: string;
+  notes?: string;
+};
+
+function parseDynamicOrderBody(body: unknown): { data?: DynamicOrderBody; error?: string } {
+  if (!body || typeof body !== "object") return { error: "Invalid request body." };
+  const value = body as Record<string, unknown>;
+  if (typeof value.customerMobile !== "string" || value.customerMobile.trim().length < 1) return { error: "Customer mobile is required." };
+  if (value.customerType !== undefined && value.customerType !== "walk-in") return { error: "Customer type must be walk-in." };
+  if (!Array.isArray(value.services) || value.services.length < 1) return { error: "At least one service is required." };
+  if (typeof value.paidAmount !== "number" || !Number.isFinite(value.paidAmount) || value.paidAmount < 0) return { error: "Paid amount must be a non-negative number." };
+  if (!["cash", "visa", "instapay", "vodafone_cash"].includes(String(value.paymentMethod))) return { error: "Invalid payment method." };
+  const services: DynamicOrderBody["services"] = [];
+  for (const item of value.services) {
+    if (!item || typeof item !== "object") return { error: "Invalid service item." };
+    const service = item as Record<string, unknown>;
+    if (typeof service.serviceType !== "string" || !service.serviceType.trim()) return { error: "Service code is required." };
+    if (typeof service.quantity !== "number" || !Number.isInteger(service.quantity) || service.quantity < 1) return { error: `Invalid quantity for service '${service.serviceType}'.` };
+    if (service.unitPrice !== undefined && (typeof service.unitPrice !== "number" || !Number.isFinite(service.unitPrice))) return { error: `Invalid unit price for service '${service.serviceType}'.` };
+    if (service.totalPrice !== undefined && (typeof service.totalPrice !== "number" || !Number.isFinite(service.totalPrice))) return { error: `Invalid total price for service '${service.serviceType}'.` };
+    if (service.urgent !== undefined && typeof service.urgent !== "boolean") return { error: `Invalid urgent flag for service '${service.serviceType}'.` };
+    services.push({ serviceType: service.serviceType.trim(), quantity: service.quantity, unitPrice: service.unitPrice as number | undefined, totalPrice: service.totalPrice as number | undefined, urgent: service.urgent as boolean | undefined });
+  }
+  return { data: { customerName: typeof value.customerName === "string" ? value.customerName : undefined, customerMobile: value.customerMobile.trim(), customerType: "walk-in", services, paidAmount: value.paidAmount, paymentMethod: value.paymentMethod as DynamicOrderBody["paymentMethod"], expectedDeliveryTime: typeof value.expectedDeliveryTime === "string" ? value.expectedDeliveryTime : undefined, notes: typeof value.notes === "string" ? value.notes : undefined } };
+}
 
 async function ensurePackageItemsTable() { await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS smp_package_items (id SERIAL PRIMARY KEY, package_id INTEGER NOT NULL REFERENCES smp_packages(id) ON DELETE CASCADE, service_id INTEGER NOT NULL REFERENCES smp_services(id) ON DELETE RESTRICT, quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (package_id, service_id))`)); }
 async function generateOrderNumber() { const date = new Date().toISOString().slice(0, 10).replace(/-/g, ""); const prefix = `PS-${date}-`; const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(ordersTable).where(sql`${ordersTable.orderNumber} ILIKE ${prefix + "%"}`); return `${prefix}${(Number(count) + 1).toString().padStart(4, "0")}`; }
 function addDays(date: Date, days: number) { const result = new Date(date); result.setDate(result.getDate() + Math.max(0, days)); return result; }
 
 router.post("/orders", async (req, res): Promise<void> => {
-  const parsed = DynamicOrderBody.safeParse(req.body); if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const parsed = parseDynamicOrderBody(req.body); if (!parsed.data) { res.status(400).json({ error: parsed.error }); return; }
   const data = parsed.data; await ensurePackageItemsTable();
   try {
     const codes = data.services.map((s) => String(s.serviceType));
