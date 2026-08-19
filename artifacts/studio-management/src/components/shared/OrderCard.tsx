@@ -27,10 +27,10 @@ export function OrderCard({
       </CardHeader>
       <CardContent className="p-4 pt-2">
         <div className="my-3 space-y-1">
-          {order.services.map((svc, i) => (
+          {order.services.map((svc: any, i) => (
             <div key={i} className="flex justify-between text-sm">
               <span>
-                {svc.quantity}x {svc.serviceType.replace(/_/g, " ")}
+                {svc.quantity}x {svc.serviceName || svc.serviceType.replace(/_/g, " ")}
               </span>
               {!hidePrices && <span className="font-mono">{formatCurrency(svc.totalPrice)}</span>}
             </div>
