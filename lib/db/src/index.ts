@@ -54,6 +54,17 @@ export function ensureDatabaseSchema(): Promise<void> {
         ALTER TABLE smp_services ADD COLUMN IF NOT EXISTS normal_delivery_days INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE smp_services ADD COLUMN IF NOT EXISTS urgent_delivery_days INTEGER;
         DROP INDEX IF EXISTS smp_services_name_unique_idx;
+        DO $$ DECLARE idx RECORD; BEGIN
+          FOR idx IN
+            SELECT indexname FROM pg_indexes
+            WHERE schemaname = current_schema()
+              AND tablename = 'smp_services'
+              AND indexdef ILIKE 'CREATE UNIQUE INDEX%'
+              AND indexdef ILIKE '%lower(trim(name))%'
+          LOOP
+            EXECUTE format('DROP INDEX IF EXISTS %I', idx.indexname);
+          END LOOP;
+        END $$;
         CREATE TABLE IF NOT EXISTS smp_packages (id SERIAL PRIMARY KEY, name TEXT NOT NULL, code TEXT NOT NULL UNIQUE, price NUMERIC(10,2) NOT NULL DEFAULT 0, description TEXT, status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
         CREATE TABLE IF NOT EXISTS smp_inventory_items (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sku TEXT NOT NULL UNIQUE, category TEXT, unit TEXT NOT NULL DEFAULT 'piece', quantity NUMERIC(12,2) NOT NULL DEFAULT 0, minimum_quantity NUMERIC(12,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
       await db.execute(sql`UPDATE smp_services SET is_free = TRUE, price = 0, urgent_price = NULL, urgent_allowed = FALSE, urgent_delivery_days = NULL WHERE price = 0 AND is_free = FALSE`);
