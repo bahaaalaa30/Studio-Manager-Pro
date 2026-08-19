@@ -4,14 +4,7 @@ import { db, ordersTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
-const IN_PROGRESS_STATUSES = [
-  "WAITING_PHOTOGRAPHY",
-  "IN_PHOTOGRAPHY",
-  "WAITING_EDITING",
-  "EDITING",
-  "WAITING_PRINT",
-  "PRINTING",
-];
+const IN_PROGRESS_STATUSES = ["WAITING_PHOTOGRAPHY", "IN_PHOTOGRAPHY", "WAITING_EDITING", "EDITING", "WAITING_PRINT", "PRINTING"];
 
 router.get("/analytics/today", async (req, res): Promise<void> => {
   const now = new Date();
@@ -56,7 +49,7 @@ router.get("/analytics/range", async (req, res): Promise<void> => {
   const outstandingRevenue = rangeOrders.reduce((s, o) => s + parseFloat(String(o.remainingAmount)), 0);
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
   const deliveredOrders = rangeOrders.filter((o) => o.status === "DELIVERED").length;
-  const urgentOrders = rangeOrders.filter((o) => (o.services as Array<{ serviceType: string }>).some((s) => s.serviceType === "urgent_fee" || s.serviceName === "Urgent Processing")).length;
+  const urgentOrders = rangeOrders.filter((o) => (o.services as Array<{ serviceType: string }>).some((s) => s.serviceType === "urgent_fee")).length;
   const pendingPickups = allOrders.filter((o) => o.status === "READY_FOR_DELIVERY").length;
   const ordersInProgress = allOrders.filter((o) => IN_PROGRESS_STATUSES.includes(o.status)).length;
 
@@ -74,8 +67,9 @@ router.get("/analytics/range", async (req, res): Promise<void> => {
 
   const serviceMap: Record<string, { quantity: number; revenue: number; code: string }> = {};
   for (const o of rangeOrders) {
-    for (const s of o.services as Array<{ serviceType: string; serviceName?: string; quantity: number; totalPrice: number }>) {
+    for (const s of o.services as Array<{ serviceType: string; quantity: number; totalPrice: number }>) {
       const code = String(s.serviceType ?? "");
+      if (code === "urgent_fee") continue;
       if (!serviceMap[code]) serviceMap[code] = { quantity: 0, revenue: 0, code };
       serviceMap[code].quantity += Number(s.quantity) || 0;
       serviceMap[code].revenue += Number(s.totalPrice) || 0;
