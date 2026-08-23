@@ -21,18 +21,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Reception customer validation: keep the API as the final source of truth.
+// Customer names intentionally accept Arabic/English text, numbers, spaces,
+// punctuation and symbols. Only control characters are rejected.
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path === "/api/orders") {
     const name = typeof req.body?.customerName === "string" ? req.body.customerName.trim().replace(/\s+/g, " ") : "";
     const mobile = typeof req.body?.customerMobile === "string" ? req.body.customerMobile.trim() : "";
-    const namePattern = /^[A-Za-z\u0600-\u06FF]+(?:[ '\-][A-Za-z\u0600-\u06FF]+)+$/;
-    const mobilePattern = /^01\d{9}$/;
     if (typeof req.body?.customerName === "string") req.body.customerName = name;
     if (!name) return res.status(400).json({ error: "Name is required." });
-    if (!namePattern.test(name)) return res.status(400).json({ error: "Enter a valid Arabic or English name with at least two parts." });
+    if (/\p{Cc}/u.test(name)) return res.status(400).json({ error: "Name contains invalid control characters." });
     if (!mobile) return res.status(400).json({ error: "Mobile number is required." });
     if (!/^\d+$/.test(mobile)) return res.status(400).json({ error: "Mobile number must contain numbers only." });
-    if (!mobilePattern.test(mobile)) return res.status(400).json({ error: "Mobile number must start with 01 and contain 11 digits." });
+    if (!/^01\d{9}$/.test(mobile)) return res.status(400).json({ error: "Mobile number must start with 01 and contain 11 digits." });
   }
   next();
 });
