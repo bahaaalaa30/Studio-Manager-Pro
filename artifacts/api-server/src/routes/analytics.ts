@@ -4,6 +4,7 @@ import { db, ordersTable, paymentTransactionsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 const IN_PROGRESS_STATUSES = ["WAITING_PHOTOGRAPHY", "IN_PHOTOGRAPHY", "WAITING_EDITING", "EDITING", "WAITING_PRINT", "PRINTING"];
+const ALL_PAYMENT_METHODS = ["cash", "visa", "instapay", "vodafone_cash"] as const;
 type OrderServiceLine = { serviceType?: string; quantity?: number; unitPrice?: number; totalPrice?: number; urgent?: boolean };
 type PaymentRow = { orderId: number; amount: string | number; paymentMethod: string; type: string; createdAt: Date };
 
@@ -19,17 +20,31 @@ async function getIncomeTransactions(rangeOrders: Array<{ id: number; paidAmount
   return typedRows;
 }
 
+function buildPaymentBreakdown(income: PaymentRow[]) {
+  const paymentMap: Record<string, { revenue: number; count: number }> = {};
+  for (const method of ALL_PAYMENT_METHODS) paymentMap[method] = { revenue: 0, count: 0 };
+  for (const p of income) {
+    if (!paymentMap[p.paymentMethod]) paymentMap[p.paymentMethod] = { revenue: 0, count: 0 };
+    paymentMap[p.paymentMethod].revenue += parseFloat(String(p.amount));
+    paymentMap[p.paymentMethod].count += 1;
+  }
+  const paymentTotal = Object.values(paymentMap).reduce((sum, item) => sum + item.revenue, 0);
+  const methods = [...ALL_PAYMENT_METHODS, ...Object.keys(paymentMap).filter((m) => !ALL_PAYMENT_METHODS.includes(m as typeof ALL_PAYMENT_METHODS[number]))];
+  return methods.map((paymentMethod) => {
+    const v = paymentMap[paymentMethod] ?? { revenue: 0, count: 0 };
+    return { paymentMethod, revenue: v.revenue, count: v.count, percentage: paymentTotal > 0 ? (v.revenue / paymentTotal) * 100 : 0 };
+  }).sort((a, b) => b.revenue - a.revenue);
+}
+
 router.get("/analytics/today", async (req, res): Promise<void> => {
   const todayStr = new Date().toISOString().slice(0, 10); const startOfDay = new Date(`${todayStr}T00:00:00.000Z`); const endOfDay = new Date(`${todayStr}T23:59:59.999Z`);
   const [todayOrders, allOrders] = await Promise.all([db.select().from(ordersTable).where(and(gte(ordersTable.createdAt, startOfDay), lte(ordersTable.createdAt, endOfDay))), db.select().from(ordersTable)]);
   const income = await getIncomeTransactions(todayOrders, startOfDay, endOfDay);
   const totalOrdersToday = todayOrders.length; const totalRevenueToday = income.reduce((sum, p) => sum + parseFloat(String(p.amount)), 0);
   const pendingPickups = allOrders.filter((o) => o.status === "READY_FOR_DELIVERY").length; const ordersInProgress = allOrders.filter((o) => IN_PROGRESS_STATUSES.includes(o.status)).length;
-  const statusCounts: Record<string, number> = {}; const paymentMap: Record<string, { revenue: number; count: number }> = {};
+  const statusCounts: Record<string, number> = {};
   for (const order of todayOrders) statusCounts[order.status] = (statusCounts[order.status] ?? 0) + 1;
-  for (const p of income) { if (!paymentMap[p.paymentMethod]) paymentMap[p.paymentMethod] = { revenue: 0, count: 0 }; paymentMap[p.paymentMethod].revenue += parseFloat(String(p.amount)); paymentMap[p.paymentMethod].count += 1; }
-  const paymentTotal = Object.values(paymentMap).reduce((sum, item) => sum + item.revenue, 0);
-  res.json({ totalOrdersToday, totalRevenueToday, pendingPickups, ordersInProgress, statusBreakdown: Object.entries(statusCounts).map(([status, count]) => ({ status, count })), paymentBreakdown: Object.entries(paymentMap).map(([paymentMethod, v]) => ({ paymentMethod, revenue: v.revenue, count: v.count, percentage: paymentTotal > 0 ? (v.revenue / paymentTotal) * 100 : 0 })).sort((a, b) => b.revenue - a.revenue) });
+  res.json({ totalOrdersToday, totalRevenueToday, pendingPickups, ordersInProgress, statusBreakdown: Object.entries(statusCounts).map(([status, count]) => ({ status, count })), paymentBreakdown: buildPaymentBreakdown(income) });
 });
 
 router.get("/analytics/range", async (req, res): Promise<void> => {
@@ -49,10 +64,7 @@ router.get("/analytics/range", async (req, res): Promise<void> => {
   for (const p of income) { const d = p.createdAt.toISOString().slice(0, 10); if (!dailyMap[d]) dailyMap[d] = { revenue: 0, orders: 0 }; dailyMap[d].revenue += parseFloat(String(p.amount)); }
   const dailyRevenue = Object.entries(dailyMap).map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date));
   const statusBreakdown = Object.entries(statusMap).map(([status, count]) => ({ status, count }));
-  const paymentMap: Record<string, { revenue: number; count: number }> = {};
-  for (const p of income) { if (!paymentMap[p.paymentMethod]) paymentMap[p.paymentMethod] = { revenue: 0, count: 0 }; paymentMap[p.paymentMethod].revenue += parseFloat(String(p.amount)); paymentMap[p.paymentMethod].count += 1; }
-  const paymentTotal = Object.values(paymentMap).reduce((sum, item) => sum + item.revenue, 0);
-  const paymentBreakdown = Object.entries(paymentMap).map(([paymentMethod, v]) => ({ paymentMethod, revenue: v.revenue, count: v.count, percentage: paymentTotal > 0 ? (v.revenue / paymentTotal) * 100 : 0 })).sort((a, b) => b.revenue - a.revenue);
+  const paymentBreakdown = buildPaymentBreakdown(income);
   const serviceMap: Record<string, { quantity: number; revenue: number; code: string }> = {};
   for (const o of rangeOrders) for (const s of o.services as OrderServiceLine[]) { const code = String(s.serviceType ?? ""); if (code === "urgent_fee") continue; if (!serviceMap[code]) serviceMap[code] = { quantity: 0, revenue: 0, code }; serviceMap[code].quantity += Number(s.quantity) || 0; serviceMap[code].revenue += Number(s.totalPrice) || 0; }
   const serviceBreakdown = Object.values(serviceMap).map((v) => ({ serviceType: serviceNames.get(v.code) ?? v.code.replace(/_/g, " "), serviceCode: v.code, quantity: v.quantity, revenue: v.revenue }));
