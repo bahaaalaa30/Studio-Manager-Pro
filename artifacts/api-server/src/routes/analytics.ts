@@ -6,6 +6,8 @@ const router: IRouter = Router();
 
 const IN_PROGRESS_STATUSES = ["WAITING_PHOTOGRAPHY", "IN_PHOTOGRAPHY", "WAITING_EDITING", "EDITING", "WAITING_PRINT", "PRINTING"];
 
+type OrderServiceLine = { serviceType?: string; quantity?: number; unitPrice?: number; totalPrice?: number; urgent?: boolean };
+
 router.get("/analytics/today", async (req, res): Promise<void> => {
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
@@ -22,7 +24,10 @@ router.get("/analytics/today", async (req, res): Promise<void> => {
   for (const order of todayOrders) statusCounts[order.status] = (statusCounts[order.status] ?? 0) + 1;
   const statusBreakdown = Object.entries(statusCounts).map(([status, count]) => ({ status, count }));
   const paymentRevenue: Record<string, number> = {};
-  for (const order of todayOrders) { const method = order.paymentMethod; paymentRevenue[method] = (paymentRevenue[method] ?? 0) + parseFloat(String(order.paidAmount)); }
+  for (const order of todayOrders) {
+    const method = order.paymentMethod;
+    paymentRevenue[method] = (paymentRevenue[method] ?? 0) + parseFloat(String(order.paidAmount));
+  }
   const paymentBreakdown = Object.entries(paymentRevenue).map(([paymentMethod, revenue]) => ({ paymentMethod, revenue }));
   res.json({ totalOrdersToday, totalRevenueToday, pendingPickups, ordersInProgress, statusBreakdown, paymentBreakdown });
 });
@@ -49,12 +54,17 @@ router.get("/analytics/range", async (req, res): Promise<void> => {
   const outstandingRevenue = rangeOrders.reduce((s, o) => s + parseFloat(String(o.remainingAmount)), 0);
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
   const deliveredOrders = rangeOrders.filter((o) => o.status === "DELIVERED").length;
-  const urgentOrders = rangeOrders.filter((o) => (o.services as Array<{ serviceType: string }>).some((s) => s.serviceType === "urgent_fee")).length;
+  const urgentOrders = rangeOrders.filter((o) => (o.services as OrderServiceLine[]).some((s) => s.serviceType === "urgent_fee" || s.urgent === true)).length;
   const pendingPickups = allOrders.filter((o) => o.status === "READY_FOR_DELIVERY").length;
   const ordersInProgress = allOrders.filter((o) => IN_PROGRESS_STATUSES.includes(o.status)).length;
 
   const dailyMap: Record<string, { revenue: number; orders: number }> = {};
-  for (const o of rangeOrders) { const d = (o.createdAt as Date).toISOString().slice(0, 10); if (!dailyMap[d]) dailyMap[d] = { revenue: 0, orders: 0 }; dailyMap[d].revenue += parseFloat(String(o.paidAmount)); dailyMap[d].orders += 1; }
+  for (const o of rangeOrders) {
+    const d = (o.createdAt as Date).toISOString().slice(0, 10);
+    if (!dailyMap[d]) dailyMap[d] = { revenue: 0, orders: 0 };
+    dailyMap[d].revenue += parseFloat(String(o.paidAmount));
+    dailyMap[d].orders += 1;
+  }
   const dailyRevenue = Object.entries(dailyMap).map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date));
 
   const statusMap: Record<string, number> = {};
@@ -62,12 +72,17 @@ router.get("/analytics/range", async (req, res): Promise<void> => {
   const statusBreakdown = Object.entries(statusMap).map(([status, count]) => ({ status, count }));
 
   const paymentMap: Record<string, { revenue: number; count: number }> = {};
-  for (const o of rangeOrders) { const m = o.paymentMethod; if (!paymentMap[m]) paymentMap[m] = { revenue: 0, count: 0 }; paymentMap[m].revenue += parseFloat(String(o.paidAmount)); paymentMap[m].count += 1; }
+  for (const o of rangeOrders) {
+    const m = o.paymentMethod;
+    if (!paymentMap[m]) paymentMap[m] = { revenue: 0, count: 0 };
+    paymentMap[m].revenue += parseFloat(String(o.paidAmount));
+    paymentMap[m].count += 1;
+  }
   const paymentBreakdown = Object.entries(paymentMap).map(([paymentMethod, v]) => ({ paymentMethod, ...v }));
 
   const serviceMap: Record<string, { quantity: number; revenue: number; code: string }> = {};
   for (const o of rangeOrders) {
-    for (const s of o.services as Array<{ serviceType: string; quantity: number; totalPrice: number }>) {
+    for (const s of o.services as OrderServiceLine[]) {
       const code = String(s.serviceType ?? "");
       if (code === "urgent_fee") continue;
       if (!serviceMap[code]) serviceMap[code] = { quantity: 0, revenue: 0, code };
@@ -83,10 +98,52 @@ router.get("/analytics/range", async (req, res): Promise<void> => {
   }));
 
   const hourMap: Record<number, number> = {};
-  for (const o of rangeOrders) { const h = (o.createdAt as Date).getHours(); hourMap[h] = (hourMap[h] ?? 0) + 1; }
+  for (const o of rangeOrders) {
+    const h = (o.createdAt as Date).getHours();
+    hourMap[h] = (hourMap[h] ?? 0) + 1;
+  }
   const hourlyDistribution = Object.entries(hourMap).map(([hour, count]) => ({ hour: parseInt(hour), count })).sort((a, b) => a.hour - b.hour);
 
-  res.json({ from: fromStr, to: toStr, totalOrders, totalRevenue, collectedRevenue, outstandingRevenue, avgOrderValue, urgentOrders, deliveredOrders, pendingPickups, ordersInProgress, dailyRevenue, statusBreakdown, paymentBreakdown, serviceBreakdown, hourlyDistribution });
+  const orders = rangeOrders.map((order) => ({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    customerMobile: order.customerMobile,
+    customerType: order.customerType,
+    services: (order.services as OrderServiceLine[]).map((service) => ({
+      ...service,
+      serviceName: serviceNames.get(String(service.serviceType ?? "")) ?? String(service.serviceType ?? "").replace(/_/g, " "),
+    })),
+    totalAmount: Number(order.totalAmount),
+    paidAmount: Number(order.paidAmount),
+    remainingAmount: Number(order.remainingAmount),
+    paymentMethod: order.paymentMethod,
+    expectedDeliveryTime: order.expectedDeliveryTime,
+    status: order.status,
+    notes: order.notes,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  }));
+
+  res.json({
+    from: fromStr,
+    to: toStr,
+    totalOrders,
+    totalRevenue,
+    collectedRevenue,
+    outstandingRevenue,
+    avgOrderValue,
+    urgentOrders,
+    deliveredOrders,
+    pendingPickups,
+    ordersInProgress,
+    dailyRevenue,
+    statusBreakdown,
+    paymentBreakdown,
+    serviceBreakdown,
+    hourlyDistribution,
+    orders,
+  });
 });
 
 export default router;
