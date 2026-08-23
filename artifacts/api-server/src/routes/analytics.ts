@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { gte, lte, and, sql, inArray } from "drizzle-orm";
+import { gte, lte, and, sql } from "drizzle-orm";
 import { db, ordersTable, paymentTransactionsTable } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -8,8 +8,7 @@ type OrderServiceLine = { serviceType?: string; quantity?: number; unitPrice?: n
 type PaymentRow = { orderId: number; amount: string | number; paymentMethod: string; type: string; createdAt: Date };
 
 async function getIncomeTransactions(rangeOrders: Array<{ id: number; paidAmount: unknown; paymentMethod: string; createdAt: Date }>, start: Date, end: Date): Promise<PaymentRow[]> {
-  const orderIds = rangeOrders.map((o) => o.id);
-  const rows = orderIds.length > 0 ? await db.select().from(paymentTransactionsTable).where(inArray(paymentTransactionsTable.orderId, orderIds)) : [];
+  const rows = await db.select().from(paymentTransactionsTable).where(and(gte(paymentTransactionsTable.createdAt, start), lte(paymentTransactionsTable.createdAt, end)));
   const typedRows = rows as PaymentRow[];
   const transactionOrderIds = new Set(typedRows.map((r) => r.orderId));
   for (const order of rangeOrders) {
@@ -17,7 +16,7 @@ async function getIncomeTransactions(rangeOrders: Array<{ id: number; paidAmount
       typedRows.push({ orderId: order.id, amount: String(order.paidAmount), paymentMethod: order.paymentMethod, type: "LEGACY_INITIAL", createdAt: order.createdAt });
     }
   }
-  return typedRows.filter((r) => r.createdAt >= start && r.createdAt <= end);
+  return typedRows;
 }
 
 router.get("/analytics/today", async (req, res): Promise<void> => {
