@@ -12,20 +12,14 @@ import {
   CollectPaymentParams,
   CollectPaymentBody,
 } from "@workspace/api-zod";
-import {
-  calculateExpectedDeliveryTime,
-  validatePaidAmount,
-} from "../lib/order-calculations.js";
+import { calculateExpectedDeliveryTime, validatePaidAmount } from "../lib/order-calculations.js";
 
 const router: IRouter = Router();
 
 async function generateOrderNumber(): Promise<string> {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const prefix = `PS-${date}-`;
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(ordersTable)
-    .where(ilike(ordersTable.orderNumber, `${prefix}%`));
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(ordersTable).where(ilike(ordersTable.orderNumber, `${prefix}%`));
   const seq = (Number(count) + 1).toString().padStart(4, "0");
   return `${prefix}${seq}`;
 }
@@ -44,21 +38,14 @@ const SERVICE_PRICES: Record<string, number> = {
 function withExpectedDeliveryTime<T extends { createdAt: Date; expectedDeliveryTime: Date | null; services: unknown }>(order: T): T {
   if (order.expectedDeliveryTime) return order;
   const services = Array.isArray(order.services)
-    ? order.services.filter((service): service is { serviceType: string } =>
-        typeof service === "object" && service !== null && "serviceType" in service &&
-        typeof (service as { serviceType?: unknown }).serviceType === "string")
+    ? order.services.filter((service): service is { serviceType: string } => typeof service === "object" && service !== null && "serviceType" in service && typeof (service as { serviceType?: unknown }).serviceType === "string")
     : [];
   return { ...order, expectedDeliveryTime: calculateExpectedDeliveryTime(services, order.createdAt) };
 }
 
-// GET /orders
 router.get("/orders", async (req, res): Promise<void> => {
   const parsed = ListOrdersQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { status, statuses, date, search } = parsed.data;
   const fromDate = typeof req.query.from === "string" ? req.query.from : undefined;
   const toDate = typeof req.query.to === "string" ? req.query.to : undefined;
@@ -67,13 +54,9 @@ router.get("/orders", async (req, res): Promise<void> => {
   const customerMobile = typeof req.query.customerMobile === "string" ? req.query.customerMobile.trim() : undefined;
   const service = typeof req.query.service === "string" ? req.query.service.trim() : undefined;
   const paymentStatus = typeof req.query.paymentStatus === "string" ? req.query.paymentStatus.trim().toLowerCase() : undefined;
-
   const hasExplicitRange = !!(fromDate && toDate);
   const hasExplicitDate = !!date;
-  const hasCriteria = !!(search || status || statuses || hasExplicitDate || hasExplicitRange || orderNumber || customerName || customerMobile || service || paymentStatus);
   const conditions = [];
-
-  // No criteria means no implicit "today" filter. Return all orders for existing operational callers.
   if (hasExplicitRange) {
     conditions.push(gte(ordersTable.createdAt, new Date(`${fromDate}T00:00:00.000Z`)));
     conditions.push(lte(ordersTable.createdAt, new Date(`${toDate}T23:59:59.999Z`)));
@@ -81,59 +64,30 @@ router.get("/orders", async (req, res): Promise<void> => {
     conditions.push(gte(ordersTable.createdAt, new Date(`${date}T00:00:00.000Z`)));
     conditions.push(lte(ordersTable.createdAt, new Date(`${date}T23:59:59.999Z`)));
   }
-
   if (status) conditions.push(eq(ordersTable.status, status));
   if (statuses) {
     const statusList = statuses.split(",").map((s) => s.trim()).filter(Boolean);
-    if (statusList.length > 0) {
-      const statusConditions = statusList.map((s) => eq(ordersTable.status, s));
-      conditions.push(statusConditions.length === 1 ? statusConditions[0] : or(...statusConditions)!);
-    }
+    if (statusList.length > 0) conditions.push(statusList.length === 1 ? eq(ordersTable.status, statusList[0]) : or(...statusList.map((s) => eq(ordersTable.status, s)))!);
   }
-
-  if (search) {
-    conditions.push(or(
-      ilike(ordersTable.orderNumber, `%${search}%`),
-      ilike(ordersTable.customerMobile, `%${search}%`),
-      ilike(ordersTable.customerName, `%${search}%`),
-    )!);
-  }
+  if (search) conditions.push(or(ilike(ordersTable.orderNumber, `%${search}%`), ilike(ordersTable.customerMobile, `%${search}%`), ilike(ordersTable.customerName, `%${search}%`))!);
   if (orderNumber) conditions.push(ilike(ordersTable.orderNumber, `%${orderNumber}%`));
   if (customerName) conditions.push(ilike(ordersTable.customerName, `%${customerName}%`));
   if (customerMobile) conditions.push(ilike(ordersTable.customerMobile, `%${customerMobile}%`));
-
-  if (service) {
-    conditions.push(sql<boolean>`EXISTS (
-      SELECT 1 FROM jsonb_array_elements(${ordersTable.services}) AS service
-      WHERE service->>'serviceType' = ${service}
-    )`);
-  }
-
-  if (paymentStatus === "paid") {
-    conditions.push(sql<boolean>`${ordersTable.paidAmount} >= ${ordersTable.totalAmount}`);
-  } else if (paymentStatus === "unpaid") {
-    conditions.push(sql<boolean>`${ordersTable.paidAmount} <= 0`);
-  } else if (paymentStatus === "partial" || paymentStatus === "partially_paid") {
-    conditions.push(sql<boolean>`${ordersTable.paidAmount} > 0 AND ${ordersTable.paidAmount} < ${ordersTable.totalAmount}`);
-  }
-
+  if (service) conditions.push(sql<boolean>`EXISTS (SELECT 1 FROM jsonb_array_elements(${ordersTable.services}) AS service WHERE service->>'serviceType' = ${service})`);
+  if (paymentStatus === "paid") conditions.push(sql<boolean>`${ordersTable.paidAmount} >= ${ordersTable.totalAmount}`);
+  else if (paymentStatus === "unpaid") conditions.push(sql<boolean>`${ordersTable.paidAmount} <= 0`);
+  else if (paymentStatus === "partial" || paymentStatus === "partially_paid") conditions.push(sql<boolean>`${ordersTable.paidAmount} > 0 AND ${ordersTable.paidAmount} < ${ordersTable.totalAmount}`);
   const results = conditions.length > 0
     ? await db.select().from(ordersTable).where(and(...conditions)).orderBy(sql`${ordersTable.createdAt} desc`)
     : await db.select().from(ordersTable).orderBy(sql`${ordersTable.createdAt} desc`);
-
   res.json(results.map(withExpectedDeliveryTime));
 });
 
-// POST /orders
 router.post("/orders", async (req, res): Promise<void> => {
   const parsed = CreateOrderBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const data = parsed.data;
-  const services = data.services.map((s) => ({
-    ...s,
-    unitPrice: s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0,
-    totalPrice: s.totalPrice ?? (s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0) * s.quantity,
-  }));
+  const services = data.services.map((s) => ({ ...s, unitPrice: s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0, totalPrice: s.totalPrice ?? (s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0) * s.quantity }));
   const totalAmount = calcTotal(services);
   const paidAmount = data.paidAmount;
   const paymentValidationError = validatePaidAmount(paidAmount, totalAmount);
@@ -142,7 +96,7 @@ router.post("/orders", async (req, res): Promise<void> => {
   const orderNumber = await generateOrderNumber();
   const createdAt = new Date();
   const expectedDeliveryTime = data.expectedDeliveryTime ? new Date(data.expectedDeliveryTime) : calculateExpectedDeliveryTime(services, createdAt);
-  const [order] = await db.insert(ordersTable).values({ orderNumber, customerName: data.customerName ?? null, customerMobile: data.customerMobile, customerType: data.customerType ?? "walk-in", services, totalAmount: String(totalAmount), paidAmount: String(paidAmount), remainingAmount: String(remainingAmount), paymentMethod: data.paymentMethod, expectedDeliveryTime, status: "WAITING_PHOTOGRAPHY", notes: data.notes ?? null }).returning();
+  const [order] = await db.insert(ordersTable).values({ orderNumber, customerName: data.customerName ?? null, customerMobile: data.customerMobile, customerType: data.customerType ?? "walk-in", services, totalAmount: String(totalAmount), paidAmount: String(paidAmount), remainingAmount: String(remainingAmount), paymentMethod: data.paymentMethod, expectedDeliveryTime, status: "WAITING_PHOTOGRAPHY" }).returning();
   res.status(201).json(order);
 });
 
@@ -164,7 +118,6 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   if (data.customerName !== undefined) updateData.customerName = data.customerName;
   if (data.customerMobile !== undefined) updateData.customerMobile = data.customerMobile;
   if (data.paymentMethod !== undefined) updateData.paymentMethod = data.paymentMethod;
-  if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.expectedDeliveryTime !== undefined) updateData.expectedDeliveryTime = new Date(data.expectedDeliveryTime);
   if (data.services !== undefined) {
     const services = data.services.map((s) => ({ ...s, unitPrice: s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0, totalPrice: s.totalPrice ?? (s.unitPrice ?? SERVICE_PRICES[s.serviceType] ?? 0) * s.quantity }));
