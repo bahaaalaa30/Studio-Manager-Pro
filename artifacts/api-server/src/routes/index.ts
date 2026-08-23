@@ -6,6 +6,7 @@ import analyticsRouter from "./analytics.js";
 import adminRouter from "./admin.js";
 import authRouter from "./auth.js";
 import serviceAdminFixRouter from "./service-admin-fix.js";
+import packageAdminRouter from "./package-admin.js";
 
 const router = Router();
 router.use(healthRouter);
@@ -15,6 +16,7 @@ router.use(ordersRouter);
 router.use(analyticsRouter);
 router.use(authRouter);
 router.use(serviceAdminFixRouter);
+router.use(packageAdminRouter);
 router.use(adminRouter);
 
 export default router;
