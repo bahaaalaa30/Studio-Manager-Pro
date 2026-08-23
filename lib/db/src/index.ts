@@ -15,8 +15,16 @@ export function ensureDatabaseSchema(): Promise<void> {
         id SERIAL PRIMARY KEY, order_number TEXT NOT NULL UNIQUE, customer_name TEXT, customer_mobile TEXT NOT NULL,
         customer_type TEXT NOT NULL DEFAULT 'walk-in', services JSONB NOT NULL, total_amount NUMERIC(10,2) NOT NULL,
         paid_amount NUMERIC(10,2) NOT NULL, remaining_amount NUMERIC(10,2) NOT NULL, payment_method TEXT NOT NULL,
-        expected_delivery_time TIMESTAMPTZ, status TEXT NOT NULL DEFAULT 'NEW', notes TEXT,
+        expected_delivery_time TIMESTAMPTZ, status TEXT NOT NULL DEFAULT 'NEW',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS payment_transactions (
+        id SERIAL PRIMARY KEY,
+        order_id INTEGER NOT NULL,
+        amount NUMERIC(10,2) NOT NULL,
+        payment_method TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'COLLECTION',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS smp_roles (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT,
           status TEXT NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
