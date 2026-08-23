@@ -1,7 +1,11 @@
 const MOBILE_PATTERN = /^01\d{9}$/;
 
 function validateName(value: string): string {
-  if (!value.trim()) return "Name is required.";
+  const name = value.trim();
+  if (!name) return "Name is required.";
+  // Arabic/English letters, numbers, spaces and symbols are allowed.
+  // Reject only Unicode control characters that should never be stored as a name.
+  if (/\p{Cc}/u.test(name)) return "Name contains invalid control characters.";
   return "";
 }
 
