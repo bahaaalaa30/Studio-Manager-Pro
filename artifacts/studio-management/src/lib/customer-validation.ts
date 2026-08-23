@@ -1,12 +1,7 @@
-const NAME_PATTERN = /^[A-Za-z\u0600-\u06FF]+(?:[ '\-][A-Za-z\u0600-\u06FF]+)+$/;
 const MOBILE_PATTERN = /^01\d{9}$/;
 
 function validateName(value: string): string {
-  const normalized = value.trim().replace(/\s+/g, " ");
-  if (!normalized) return "Name is required.";
-  if (!NAME_PATTERN.test(normalized)) {
-    return "Enter a valid Arabic or English name with at least two parts.";
-  }
+  if (!value.trim()) return "Name is required.";
   return "";
 }
 
