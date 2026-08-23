@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, or, ilike, sql } from "drizzle-orm";
-import { db, ordersTable } from "@workspace/db";
+import { db, ordersTable, paymentTransactionsTable } from "@workspace/db";
 import {
   ListOrdersQueryParams,
   CreateOrderBody,
@@ -62,7 +62,7 @@ router.get("/orders", async (req, res): Promise<void> => {
     conditions.push(lte(ordersTable.createdAt, new Date(`${toDate}T23:59:59.999Z`)));
   } else if (hasExplicitDate) {
     conditions.push(gte(ordersTable.createdAt, new Date(`${date}T00:00:00.000Z`)));
-    conditions.push(lte(ordersTable.createdAt, new Date(`${date}T23:59:59.999Z`)));
+    conditions.push(lte(ordersTable.createdAt, new Date(`${date}T23:59:59.999Z`));
   }
   if (status) conditions.push(eq(ordersTable.status, status));
   if (statuses) {
@@ -97,6 +97,9 @@ router.post("/orders", async (req, res): Promise<void> => {
   const createdAt = new Date();
   const expectedDeliveryTime = data.expectedDeliveryTime ? new Date(data.expectedDeliveryTime) : calculateExpectedDeliveryTime(services, createdAt);
   const [order] = await db.insert(ordersTable).values({ orderNumber, customerName: data.customerName ?? null, customerMobile: data.customerMobile, customerType: data.customerType ?? "walk-in", services, totalAmount: String(totalAmount), paidAmount: String(paidAmount), remainingAmount: String(remainingAmount), paymentMethod: data.paymentMethod, expectedDeliveryTime, status: "WAITING_PHOTOGRAPHY" }).returning();
+  if (paidAmount > 0) {
+    await db.insert(paymentTransactionsTable).values({ orderId: order.id, amount: String(paidAmount), paymentMethod: data.paymentMethod, type: "INITIAL" });
+  }
   res.status(201).json(order);
 });
 
@@ -148,7 +151,7 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
 
 router.patch("/orders/:id/status", async (req, res): Promise<void> => {
   const params = UpdateOrderStatusParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const parsed = UpdateOrderStatusBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [order] = await db.update(ordersTable).set({ status: parsed.data.status }).where(eq(ordersTable.id, params.data.id)).returning();
@@ -172,6 +175,7 @@ router.patch("/orders/:id/payment", async (req, res): Promise<void> => {
   const updateData: Record<string, unknown> = { paidAmount: String(newPaid), remainingAmount: String(total - newPaid) };
   if (parsed.data.paymentMethod) updateData.paymentMethod = parsed.data.paymentMethod;
   const [order] = await db.update(ordersTable).set(updateData).where(eq(ordersTable.id, params.data.id)).returning();
+  await db.insert(paymentTransactionsTable).values({ orderId: existing.id, amount: String(parsed.data.amount), paymentMethod: parsed.data.paymentMethod ?? existing.paymentMethod, type: "COLLECTION" });
   res.json(withExpectedDeliveryTime(order));
 });
 
