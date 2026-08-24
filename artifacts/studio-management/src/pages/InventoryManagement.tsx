@@ -1,0 +1,106 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
+import { ArrowLeft, Boxes, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+type Item = { id?: number; name: string; category: string; unit: string; quantity: number | string; minimum_quantity: number | string };
+type Analytics = { total_items: number | string; low_stock_items: number | string; total_quantity: number | string; total_minimum_quantity: number | string };
+
+async function read(response: Response) {
+  const text = await response.text();
+  if (!text) return null;
+  try { return JSON.parse(text) as unknown; } catch { return { error: text.replace(/<[^>]*>/g, "").trim() }; }
+}
+function errorMessage(data: unknown, fallback: string) { return data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string" ? (data as { error: string }).error : fallback; }
+function numberValue(value: unknown) { const n = Number(value); return Number.isFinite(n) ? n : 0; }
+
+export default function InventoryManagement() {
+  const [rows, setRows] = useState<Item[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics>({ total_items: 0, low_stock_items: 0, total_quantity: 0, total_minimum_quantity: 0 });
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState<Item | null>(null);
+  const [form, setForm] = useState({ name: "", category: "", unit: "", quantity: "", minimum_quantity: "" });
+  const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  const load = async (query = search) => {
+    setLoading(true); setError("");
+    try {
+      const [itemsResponse, analyticsResponse] = await Promise.all([
+        fetch(`/api/admin/inventory${query ? `?search=${encodeURIComponent(query)}` : ""}`, { headers: { Accept: "application/json" } }),
+        fetch("/api/admin/inventory/analytics", { headers: { Accept: "application/json" } }),
+      ]);
+      const items = await read(itemsResponse); const stats = await read(analyticsResponse);
+      if (!itemsResponse.ok) throw new Error(errorMessage(items, "Failed to load inventory."));
+      if (!analyticsResponse.ok) throw new Error(errorMessage(stats, "Failed to load inventory analytics."));
+      setRows(Array.isArray(items) ? items as Item[] : []);
+      if (stats && typeof stats === "object") setAnalytics(stats as Analytics);
+      setPage(1);
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to load inventory."); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void load(""); }, []);
+
+  const openCreate = () => { setEditing({}); setForm({ name: "", category: "", unit: "", quantity: "", minimum_quantity: "" }); setError(""); };
+  const openEdit = (item: Item) => { setEditing(item); setForm({ name: String(item.name ?? ""), category: String(item.category ?? ""), unit: String(item.unit ?? ""), quantity: String(item.quantity ?? ""), minimum_quantity: String(item.minimum_quantity ?? "") }); setError(""); };
+  const validation = useMemo(() => {
+    const next: Record<string, string> = {};
+    const name = form.name.trim(); const category = form.category.trim(); const unit = form.unit.trim();
+    const quantity = Number(form.quantity); const minimum = Number(form.minimum_quantity);
+    if (!name) next.name = "Item Name is required.";
+    else if (name.length > 120) next.name = "Item Name cannot exceed 120 characters.";
+    if (!category) next.category = "Category is required.";
+    if (!unit) next.unit = "Unit is required.";
+    if (form.quantity === "" || !Number.isFinite(quantity) || quantity < 0) next.quantity = "Quantity must be >= 0.";
+    if (form.minimum_quantity === "" || !Number.isFinite(minimum) || minimum < 0) next.minimum_quantity = "Minimum Quantity must be >= 0.";
+    else if (Number.isFinite(quantity) && minimum > quantity) next.minimum_quantity = "Minimum Quantity cannot be greater than Quantity.";
+    return next;
+  }, [form]);
+
+  const save = async () => {
+    if (!editing || Object.keys(validation).length) return;
+    setSaving(true); setError("");
+    try {
+      const body = { name: form.name.trim(), category: form.category.trim(), unit: form.unit.trim(), quantity: Number(form.quantity), minimum_quantity: Number(form.minimum_quantity) };
+      const response = await fetch(editing.id ? `/api/admin/inventory/${editing.id}` : "/api/admin/inventory", { method: editing.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(body) });
+      const data = await read(response); if (!response.ok) throw new Error(errorMessage(data, "Save failed."));
+      setEditing(null); await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Save failed."); }
+    finally { setSaving(false); }
+  };
+  const remove = async (id: number) => {
+    if (!window.confirm("Delete this inventory item? This action cannot be undone.")) return;
+    try { const response = await fetch(`/api/admin/inventory/${id}`, { method: "DELETE" }); const data = await read(response); if (!response.ok) throw new Error(errorMessage(data, "Delete failed.")); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "Delete failed."); }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize);
+  const lowStock = (item: Item) => numberValue(item.minimum_quantity) > numberValue(item.quantity);
+
+  return <div className="p-4 sm:p-6 lg:p-8 max-w-[1500px] mx-auto w-full space-y-5">
+    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+      <div className="flex items-start gap-3"><Link href="/admin"><Button variant="outline" size="icon"><ArrowLeft className="w-4 h-4" /></Button></Link><div><div className="flex items-center gap-2"><div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center"><Boxes className="w-5 h-5 text-primary" /></div><h2 className="text-xl sm:text-2xl font-bold">Inventory Items</h2></div><p className="text-sm text-muted-foreground mt-2">Manage inventory quantities and minimum stock thresholds.</p></div></div>
+      <Button onClick={openCreate} className="gap-2"><Plus className="w-4 h-4" />Add Inventory Item</Button>
+    </div>
+
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {[["Total Items", analytics.total_items], ["Low Stock", analytics.low_stock_items], ["Total Quantity", analytics.total_quantity], ["Minimum Quantity", analytics.total_minimum_quantity]].map(([label, value]) => <Card key={String(label)}><CardContent className="p-4"><div className="text-xs text-muted-foreground">{label}</div><div className="text-2xl font-bold mt-1">{numberValue(value)}</div></CardContent></Card>)}
+    </div>
+
+    <Card><CardContent className="p-3 sm:p-4"><div className="flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" /><Input value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void load()} placeholder="Search inventory..." className="pl-9 h-9" /></div><Button onClick={() => void load()} variant="outline" className="h-9">Search</Button></div></CardContent></Card>
+    {error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive px-4 py-3 text-sm">{error}</div>}
+
+    <Card><CardHeader className="py-4 border-b"><CardTitle className="text-sm">Inventory <span className="text-xs text-muted-foreground font-normal">({rows.length})</span></CardTitle></CardHeader><CardContent className="p-0 overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-muted/30">{["Item Name", "Category", "Unit", "Quantity", "Minimum Quantity", "Actions"].map((h) => <th key={h} className={`px-4 py-3 text-muted-foreground whitespace-nowrap ${h === "Actions" ? "text-right" : "text-left"}`}>{h}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={6} className="p-10 text-center text-muted-foreground">Loading…</td></tr> : visibleRows.length === 0 ? <tr><td colSpan={6} className="p-10 text-center text-muted-foreground">No records found.</td></tr> : visibleRows.map((row) => <tr key={row.id} className={`border-b last:border-0 ${lowStock(row) ? "bg-red-500/10 text-red-700 dark:text-red-300" : "hover:bg-muted/20"}`}><td className="px-4 py-3 font-medium">{row.name}</td><td className="px-4 py-3">{row.category}</td><td className="px-4 py-3">{row.unit}</td><td className="px-4 py-3">{numberValue(row.quantity)}</td><td className="px-4 py-3">{numberValue(row.minimum_quantity)}</td><td className="px-4 py-3"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" onClick={() => openEdit(row)}><Pencil className="w-4 h-4" /></Button><Button variant="ghost" size="icon" onClick={() => void remove(Number(row.id))}><Trash2 className="w-4 h-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></CardContent><div className="flex justify-between items-center px-4 py-3 border-t text-xs text-muted-foreground"><span>Page {page} of {totalPages}</span><div className="flex gap-1"><Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}><ChevronLeft className="w-4 h-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}><ChevronRight className="w-4 h-4" /></Button></div></div></Card>
+
+    {editing && <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"><Card className="w-full max-w-2xl max-h-[92vh] overflow-y-auto"><CardHeader className="sticky top-0 z-20 bg-card border-b flex flex-row items-center justify-between"><div><CardTitle>{editing.id ? "Edit" : "Add"} Inventory Item</CardTitle><p className="text-xs text-muted-foreground mt-1">Required fields are marked with *</p></div><Button variant="ghost" size="icon" onClick={() => setEditing(null)}><X className="w-4 h-4" /></Button></CardHeader><CardContent className="p-5 space-y-4"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {["name", "category", "unit", "quantity", "minimum_quantity"].map((field) => <div key={field} className="space-y-1.5"><Label>{field === "name" ? "Item Name" : field === "minimum_quantity" ? "Minimum Quantity" : field.charAt(0).toUpperCase() + field.slice(1).replace("_", " ")} *</Label><Input type={["quantity", "minimum_quantity"].includes(field) ? "number" : "text"} min={["quantity", "minimum_quantity"].includes(field) ? "0" : undefined} step={["quantity", "minimum_quantity"].includes(field) ? "1" : undefined} value={form[field as keyof typeof form]} onChange={(e) => setForm((p) => ({ ...p, [field]: e.target.value }))} />{validation[field] && <p className="text-xs text-destructive">{validation[field]}</p>}</div>)}
+    </div><div className="flex justify-end gap-2 border-t pt-4"><Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={() => void save()} disabled={saving || Object.keys(validation).length > 0}>{saving ? "Saving…" : "Save"}</Button></div></CardContent></Card></div>}
+  </div>;
+}
