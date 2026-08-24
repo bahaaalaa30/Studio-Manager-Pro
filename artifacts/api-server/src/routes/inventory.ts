@@ -1,0 +1,110 @@
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
+
+const router = Router();
+const quote = (value: unknown) => value === null || value === undefined ? "NULL" : typeof value === "number" ? String(value) : `'${String(value).replace(/'/g, "''")}'`;
+const normalizeText = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ");
+
+function validateInventory(data: Record<string, unknown>) {
+  const name = normalizeText(data.name);
+  const category = normalizeText(data.category);
+  const unit = normalizeText(data.unit);
+  const quantity = Number(data.quantity);
+  const minimumQuantity = Number(data.minimum_quantity);
+
+  if (!name) return "Item Name is required.";
+  if (name.length > 120) return "Item Name cannot exceed 120 characters.";
+  if (!category) return "Category is required.";
+  if (category.length > 120) return "Category cannot exceed 120 characters.";
+  if (!unit) return "Unit is required.";
+  if (unit.length > 50) return "Unit cannot exceed 50 characters.";
+  if (!Number.isFinite(quantity) || quantity < 0) return "Quantity must be a number greater than or equal to 0.";
+  if (!Number.isFinite(minimumQuantity) || minimumQuantity < 0) return "Minimum Quantity must be a number greater than or equal to 0.";
+  if (minimumQuantity > quantity) return "Minimum Quantity cannot be greater than Quantity.";
+  return null;
+}
+
+router.get("/admin/inventory/analytics", async (_req, res) => {
+  try {
+    const result = await db.execute(sql.raw(`
+      SELECT
+        COUNT(*)::int AS total_items,
+        COUNT(*) FILTER (WHERE quantity <= minimum_quantity)::int AS low_stock_items,
+        COALESCE(SUM(quantity), 0) AS total_quantity,
+        COALESCE(SUM(minimum_quantity), 0) AS total_minimum_quantity
+      FROM smp_inventory_items
+    `));
+    return res.json(result.rows[0] ?? { total_items: 0, low_stock_items: 0, total_quantity: 0, total_minimum_quantity: 0 });
+  } catch (error) {
+    req.log.error({ err: error }, "Inventory analytics failed");
+    return res.status(500).json({ error: "Failed to load inventory analytics" });
+  }
+});
+
+router.get("/admin/inventory", async (req, res) => {
+  try {
+    const search = String(req.query.search ?? "").trim().replace(/'/g, "''");
+    const where = search ? `WHERE name ILIKE '%${search}%' OR category ILIKE '%${search}%' OR unit ILIKE '%${search}%'` : "";
+    const result = await db.execute(sql.raw(`SELECT id, name, category, unit, quantity, minimum_quantity FROM smp_inventory_items ${where} ORDER BY id DESC LIMIT 500`));
+    return res.json(result.rows);
+  } catch (error) {
+    req.log.error({ err: error }, "Inventory list failed");
+    return res.status(500).json({ error: "Failed to load inventory" });
+  }
+});
+
+router.post("/admin/inventory", async (req, res) => {
+  const data = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};
+  const validation = validateInventory(data);
+  if (validation) return res.status(400).json({ error: validation });
+  const name = normalizeText(data.name);
+  const category = normalizeText(data.category);
+  const unit = normalizeText(data.unit);
+  const quantity = Number(data.quantity);
+  const minimumQuantity = Number(data.minimum_quantity);
+  try {
+    const result = await db.execute(sql.raw(`INSERT INTO smp_inventory_items (name, category, unit, quantity, minimum_quantity) VALUES (${quote(name)}, ${quote(category)}, ${quote(unit)}, ${quantity}, ${minimumQuantity}) RETURNING id, name, category, unit, quantity, minimum_quantity`));
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    req.log.error({ err: error }, "Inventory create failed");
+    return res.status(400).json({ error: "Failed to create inventory item." });
+  }
+});
+
+router.patch("/admin/inventory/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const existing = await db.execute(sql.raw(`SELECT id, name, category, unit, quantity, minimum_quantity FROM smp_inventory_items WHERE id = ${id} LIMIT 1`));
+    if (!existing.rows.length) return res.status(404).json({ error: "Inventory item not found" });
+    const merged = { ...(existing.rows[0] as Record<string, unknown>), ...(req.body ?? {}) };
+    const validation = validateInventory(merged);
+    if (validation) return res.status(400).json({ error: validation });
+    const fields = ["name", "category", "unit", "quantity", "minimum_quantity"];
+    const sets = fields.map((field) => {
+      const value = merged[field];
+      return `${field} = ${quote(["quantity", "minimum_quantity"].includes(field) ? Number(value) : normalizeText(value))}`;
+    });
+    const result = await db.execute(sql.raw(`UPDATE smp_inventory_items SET ${sets.join(", ")}, updated_at = NOW() WHERE id = ${id} RETURNING id, name, category, unit, quantity, minimum_quantity`));
+    return res.json(result.rows[0]);
+  } catch (error) {
+    req.log.error({ err: error }, "Inventory update failed");
+    return res.status(400).json({ error: "Failed to update inventory item." });
+  }
+});
+
+router.delete("/admin/inventory/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
+  try {
+    const result = await db.execute(sql.raw(`DELETE FROM smp_inventory_items WHERE id = ${id} RETURNING id`));
+    if (!result.rows.length) return res.status(404).json({ error: "Inventory item not found" });
+    return res.status(204).send();
+  } catch (error) {
+    req.log.error({ err: error }, "Inventory delete failed");
+    return res.status(400).json({ error: "Failed to delete inventory item." });
+  }
+});
+
+export default router;
