@@ -1,0 +1,147 @@
+name: SMP-35 Inventory Update
+
+on:
+  push:
+    branches: [vercel-deployment]
+    paths:
+      - '.github/workflows/smp-35-inventory-update.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply SMP-35 changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          frontend = Path('artifacts/studio-management/src/pages/AdminManagement.tsx')
+          text = frontend.read_text()
+
+          old = 'inventory: { title: "Inventory Items", description: "Manage inventory master items and low-stock thresholds.", icon: PackageCheck, fields: ["name", "sku", "category", "unit", "quantity", "minimum_quantity", "status"], labels: { name: "Item Name", sku: "SKU", category: "Category", unit: "Unit", quantity: "Quantity", minimum_quantity: "Minimum Quantity", status: "Status" } },'
+          new = 'inventory: { title: "Inventory Items", description: "Manage inventory master items and low-stock thresholds.", icon: PackageCheck, fields: ["name", "category", "unit", "quantity", "minimum_quantity"], labels: { name: "Item Name", category: "Category", unit: "Unit", quantity: "Quantity", minimum_quantity: "Minimum Quantity" } },'
+          if old not in text:
+              raise SystemExit('inventory config marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '  else if (resource === "inventory") { required("name", "Item name is required."); required("sku", "SKU is required"); required("unit", "Unit is required."); required("status", "Status is required."); }'
+          if old not in text:
+              old = '  else if (resource === "inventory") { required("name", "Item name is required."); required("sku", "SKU is required."); required("unit", "Unit is required."); required("status", "Status is required."); }'
+          new = '''  else if (resource === "inventory") {
+    required("name", "Item name is required.");
+    required("category", "Category is required.");
+    required("unit", "Unit is required.");
+    const alphaNumeric = /^[A-Za-z0-9\\u0600-\\u06FF]+(?:[ A-Za-z0-9\\u0600-\\u06FF]+)*$/u;
+    if (form.name && !alphaNumeric.test(form.name.trim())) errors.name = "Item name may contain letters, numbers and spaces only.";
+    if (form.category && !alphaNumeric.test(form.category.trim())) errors.category = "Category may contain letters, numbers and spaces only.";
+    if (form.unit && !alphaNumeric.test(form.unit.trim())) errors.unit = "Unit may contain letters, numbers and spaces only.";
+    const quantity = Number(form.quantity); const minimum = Number(form.minimum_quantity);
+    if (form.quantity === "" || !Number.isFinite(quantity) || quantity < 0) errors.quantity = "Quantity must be a number greater than or equal to 0.";
+    if (form.minimum_quantity === "" || !Number.isFinite(minimum) || minimum < 0) errors.minimum_quantity = "Minimum Quantity must be a number greater than or equal to 0.";
+    else if (Number.isFinite(quantity) && minimum > quantity) errors.minimum_quantity = "Minimum Quantity cannot be greater than Quantity.";
+  }'''
+          if 'required("sku", "SKU is required.")' not in text:
+              raise SystemExit('inventory validation marker not found')
+          text = text.replace('  else if (resource === "inventory") { required("name", "Item name is required."); required("sku", "SKU is required."); required("unit", "Unit is required."); required("status", "Status is required."); }', new, 1)
+
+          import_marker = 'import { Label } from "@/components/ui/label";'
+          if import_marker not in text:
+              raise SystemExit('frontend import marker not found')
+          text = text.replace(import_marker, import_marker + '\nimport InventoryAnalytics from "@/components/InventoryAnalytics";', 1)
+
+          effect_marker = '  useEffect(() => { void load(""); }, [resource]);'
+          if effect_marker not in text:
+              raise SystemExit('frontend effect marker not found')
+          text = text.replace(effect_marker, effect_marker, 1)
+
+          anchor = '  const validationErrors = editing ? resource === "services" ? validateService(form) : validateGeneric(form, resource) : {};'
+          if anchor not in text:
+              raise SystemExit('frontend validation anchor not found')
+          text = text.replace(anchor, anchor + '\n  const inventoryAnalytics = resource === "inventory" ? <InventoryAnalytics /> : null;', 1)
+
+          start = text.find('  return (', text.find('export default function AdminManagement'))
+          if start < 0:
+              raise SystemExit('frontend return not found')
+          div = text.find('<div', start)
+          if div < 0:
+              raise SystemExit('frontend root div not found')
+          close = text.find('>', div)
+          if close < 0:
+              raise SystemExit('frontend root div close not found')
+          injection = '\n        {inventoryAnalytics}'
+          text = text[:close+1] + injection + text[close+1:]
+
+          frontend.write_text(text)
+
+          analytics = Path('artifacts/studio-management/src/components/InventoryAnalytics.tsx')
+          analytics.parent.mkdir(parents=True, exist_ok=True)
+          analytics.write_text('''import { useEffect, useState } from "react";\nimport { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";\n\ntype Analytics = { totalItems: number; lowStockItems: number; criticalItems: number; outOfStockItems: number; totalQuantity: number };\n\nexport default function InventoryAnalytics() {\n  const [data, setData] = useState<Analytics | null>(null);\n  useEffect(() => {\n    let active = true;\n    fetch("/api/admin/inventory/analytics", { headers: { Accept: "application/json" } })\n      .then((r) => r.ok ? r.json() : null)\n      .then((value) => { if (active && value) setData(value as Analytics); })\n      .catch(() => undefined);\n    return () => { active = false; };\n  }, []);\n  if (!data) return null;\n  const cards = [\n    ["Total Items", data.totalItems],\n    ["Low Stock", data.lowStockItems],\n    ["Critical Stock", data.criticalItems],\n    ["Out of Stock", data.outOfStockItems],\n    ["Total Quantity", data.totalQuantity],\n  ];\n  return (\n    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">\n      {cards.map(([label, value]) => (\n        <Card key={label as string}>\n          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{label}</CardTitle></CardHeader>\n          <CardContent><div className="text-2xl font-semibold">{value}</div></CardContent>\n        </Card>\n      ))}\n    </div>\n  );\n}\n''')
+
+          api = Path('artifacts/api-server/src/routes/admin.ts')
+          text = api.read_text()
+          text = text.replace('inventory: { table: "smp_inventory_items", columns: ["name", "sku", "category", "unit", "quantity", "minimum_quantity", "status"] },', 'inventory: { table: "smp_inventory_items", columns: ["name", "category", "unit", "quantity", "minimum_quantity"] },', 1)
+
+          validator = '''\nfunction validateInventory(data: Record<string, unknown>) {\n  const name = String(data.name ?? "").trim();\n  const category = String(data.category ?? "").trim();\n  const unit = String(data.unit ?? "").trim();\n  const quantity = Number(data.quantity);\n  const minimumQuantity = Number(data.minimum_quantity);\n  const alphaNumeric = /^[A-Za-z0-9\\u0600-\\u06FF]+(?:[ A-Za-z0-9\\u0600-\\u06FF]+)*$/u;\n  if (!name || !alphaNumeric.test(name)) return "Item name is required and must contain letters, numbers and spaces only.";\n  if (!category || !alphaNumeric.test(category)) return "Category is required and must contain letters, numbers and spaces only.";\n  if (!unit || !alphaNumeric.test(unit)) return "Unit is required and must contain letters, numbers and spaces only.";\n  if (!Number.isFinite(quantity) || quantity < 0) return "Quantity must be a number greater than or equal to 0.";\n  if (!Number.isFinite(minimumQuantity) || minimumQuantity < 0) return "Minimum Quantity must be a number greater than or equal to 0.";\n  if (minimumQuantity > quantity) return "Minimum Quantity cannot be greater than Quantity.";\n  return null;\n}\n'''
+          if 'function validateInventory(' not in text:
+              marker = '\nrouter.get("/admin/:resource"'
+              if marker not in text: raise SystemExit('api validator insertion marker not found')
+              text = text.replace(marker, validator + marker, 1)
+
+          analytics_route = '''\nrouter.get("/admin/inventory/analytics", async (req, res) => {\n  try {\n    const result = await db.execute(sql.raw(`SELECT COUNT(*)::int AS total_items, COUNT(*) FILTER (WHERE quantity <= minimum_quantity AND quantity > 0)::int AS low_stock_items, COUNT(*) FILTER (WHERE minimum_quantity > quantity)::int AS critical_items, COUNT(*) FILTER (WHERE quantity = 0)::int AS out_of_stock_items, COALESCE(SUM(quantity), 0)::numeric AS total_quantity FROM smp_inventory_items`));\n    const row = result.rows[0] ?? {};\n    return res.json({ totalItems: Number(row.total_items ?? 0), lowStockItems: Number(row.low_stock_items ?? 0), criticalItems: Number(row.critical_items ?? 0), outOfStockItems: Number(row.out_of_stock_items ?? 0), totalQuantity: Number(row.total_quantity ?? 0) });\n  } catch (error) { req.log.error({ err: error }, "Inventory analytics failed"); return res.status(500).json({ error: "Failed to load inventory analytics" }); }\n});\n'''
+          if 'router.get("/admin/inventory/analytics"' not in text:
+              marker = 'router.get("/admin/:resource"'
+              text = text.replace(marker, analytics_route + '\n' + marker, 1)
+
+          post_route = '''\nrouter.post("/admin/inventory", async (req, res) => {\n  const data = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};\n  const validation = validateInventory(data);\n  if (validation) return res.status(400).json({ error: validation });\n  try {\n    const result = await db.execute(sql.raw(`INSERT INTO smp_inventory_items (name, category, unit, quantity, minimum_quantity, status, sku) VALUES (${quote(String(data.name).trim())}, ${quote(String(data.category).trim())}, ${quote(String(data.unit).trim())}, ${Number(data.quantity)}, ${Number(data.minimum_quantity)}, 'ACTIVE', NULL) RETURNING id, name, category, unit, quantity, minimum_quantity, status, created_at, updated_at`));\n    return res.status(201).json(result.rows[0]);\n  } catch (error) { req.log.error({ err: error }, "Inventory create failed"); return res.status(400).json({ error: "Failed to create inventory item." }); }\n});\n'''
+          if 'router.post("/admin/inventory"' not in text:
+              marker = 'router.post("/admin/:resource"'
+              text = text.replace(marker, post_route + '\n' + marker, 1)
+
+          put_route = '''\nrouter.put("/admin/inventory/:id", async (req, res) => {\n  const data = req.body && typeof req.body === "object" ? req.body as Record<string, unknown> : {};\n  const validation = validateInventory(data);\n  if (validation) return res.status(400).json({ error: validation });\n  const id = Number(req.params.id);\n  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid inventory item id." });\n  try {\n    const result = await db.execute(sql.raw(`UPDATE smp_inventory_items SET name = ${quote(String(data.name).trim())}, category = ${quote(String(data.category).trim())}, unit = ${quote(String(data.unit).trim())}, quantity = ${Number(data.quantity)}, minimum_quantity = ${Number(data.minimum_quantity)}, updated_at = NOW() WHERE id = ${id} RETURNING id, name, category, unit, quantity, minimum_quantity, status, created_at, updated_at`));\n    if (!result.rows.length) return res.status(404).json({ error: "Inventory item not found." });\n    return res.json(result.rows[0]);\n  } catch (error) { req.log.error({ err: error }, "Inventory update failed"); return res.status(400).json({ error: "Failed to update inventory item." }); }\n});\n'''
+          if 'router.put("/admin/inventory/:id"' not in text:
+              idx = text.find('router.put(')
+              if idx < 0: raise SystemExit('api put marker not found')
+              text = text[:idx] + put_route + '\n' + text[idx:]
+
+          api.write_text(text)
+
+          db = Path('lib/db/src/index.ts')
+          text = db.read_text()
+          old = 'CREATE TABLE IF NOT EXISTS smp_inventory_items (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sku TEXT NOT NULL UNIQUE, category TEXT, unit TEXT NOT NULL DEFAULT \'piece\', quantity NUMERIC(12,2) NOT NULL DEFAULT 0, minimum_quantity NUMERIC(12,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'ACTIVE\', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());'
+          new = 'CREATE TABLE IF NOT EXISTS smp_inventory_items (id SERIAL PRIMARY KEY, name TEXT NOT NULL, sku TEXT, category TEXT, unit TEXT NOT NULL DEFAULT \'piece\', quantity NUMERIC(12,2) NOT NULL DEFAULT 0, minimum_quantity NUMERIC(12,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'ACTIVE\', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());'
+          if old in text:
+              text = text.replace(old, new, 1)
+          migration = "\\n        ALTER TABLE smp_inventory_items ALTER COLUMN sku DROP NOT NULL;\\n        ALTER TABLE smp_inventory_items DROP CONSTRAINT IF EXISTS smp_inventory_items_sku_key;"
+          if 'ALTER TABLE smp_inventory_items ALTER COLUMN sku DROP NOT NULL;' not in text:
+              needle = '        CREATE TABLE IF NOT EXISTS smp_inventory_items'
+              pos = text.find(needle)
+              if pos < 0: raise SystemExit('db inventory table marker not found')
+              end = text.find(');`);', pos)
+              if end < 0: raise SystemExit('db schema closing marker not found')
+              text = text[:end+3] + migration + text[end+3:]
+          db.write_text(text)
+
+          # Remove this one-shot workflow after it has applied the change.
+          workflow = Path('.github/workflows/smp-35-inventory-update.yml')
+          workflow.unlink(missing_ok=True)
+          print('SMP-35 changes applied')
+          PY
+
+      - name: Commit SMP-35 implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/studio-management/src/pages/AdminManagement.tsx artifacts/studio-management/src/components/InventoryAnalytics.tsx artifacts/api-server/src/routes/admin.ts lib/db/src/index.ts .github/workflows/smp-35-inventory-update.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "SMP-35: update inventory module"
+          git push origin vercel-deployment
